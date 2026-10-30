@@ -1,4 +1,4 @@
-ARTE DA GUERRA - PROTOTIPO JOGAVEL 0.1.0
+ARTE DA GUERRA - PROTOTIPO JOGAVEL 0.2.0
 
 Este download inclui o jogo e o servidor local. Ainda nao e um instalador .exe.
 Requer Node.js 22 ou superior: https://nodejs.org/

@@ -56,7 +56,7 @@ export const server=http.createServer(async(req,res)=>{
    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(snapshot(r))}\n\n`);streams.set(p.id,res);
    req.on('close',()=>{if(streams.get(p.id)===res)streams.delete(p.id);});return;
   }
-  const files={'/':'index.html','/client.js':'client.js','/style.css':'style.css'};const file=files[url.pathname];
+  const files={'/':'index.html','/client.js':'client.js','/rules.js':'rules.js','/combat-effects.js':'combat-effects.js','/style.css':'style.css'};const file=files[url.pathname];
   if(req.method!=='GET'||!file)return json(res,404,{error:'Não encontrado.'});
   const data=await readFile(new URL(`./public/${file}`,import.meta.url));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(data);
  }catch(e){if(!res.headersSent)json(res,e.status||400,{error:e.message});else res.end();}
