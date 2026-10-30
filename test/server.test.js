@@ -17,7 +17,12 @@ test('HTTP: quatro sessões privadas recebem lobby, ordens e vitória; comandos 
   const initial=await Promise.all(readers.map(async r=>{const {value}=await r.read();return JSON.parse(new TextDecoder().decode(value).split('\n\n')[0].slice(6));}));
   for(const state of initial){assert.equal(state.phase,'playing');assert.equal(state.players.length,4);assert.equal(state.entities.filter(e=>e.owner!=='neutral').length,24);assert.equal(state.players[0].token,undefined);}
   const w=initial[0].entities.find(e=>e.owner===a.id&&e.type==='worker');assert.equal((await post('command',{type:'move',ids:[w.id],x:500,y:500},a)).status,200);
-  const update=await readers[1].read();const states=new TextDecoder().decode(update.value).split('\n\n').filter(Boolean).map(s=>JSON.parse(s.slice(6)));assert.ok(states.some(s=>s.entities.find(e=>e.id===w.id).order?.type==='move'));
+  let moved=false,buffer='';
+  for(let attempt=0;attempt<20&&!moved;attempt++){
+   const update=await readers[1].read();buffer+=new TextDecoder().decode(update.value);let end;
+   while((end=buffer.indexOf('\n\n'))>=0){const message=buffer.slice(0,end);buffer=buffer.slice(end+2);if(message.startsWith('data: ')){const state=JSON.parse(message.slice(6));if(state.entities.find(e=>e.id===w.id).order?.type==='move')moved=true;}}
+  }
+  assert.ok(moved,'a ordem deve chegar em uma atualização posterior ao pedido');
   assert.equal((await post('command',{type:'surrender'},{...a,token:'fake'})).status,400);
   for(const s of all.slice(1))assert.equal((await post('command',{type:'surrender'},s)).status,200);
   let finished=false;while(!finished){const {value}=await readers[0].read();const messages=new TextDecoder().decode(value).split('\n\n').filter(s=>s.startsWith('data: '));for(const m of messages){const s=JSON.parse(m.slice(6));if(s.phase==='finished'){assert.equal(s.winner,a.id);finished=true;}}}
