@@ -148,7 +148,7 @@ Nesta atualização, foram conferidas as operações do cliente e uma prévia do
 
 ## Limites assumidos e próximos passos
 
-Este MVP é uma arena RTS 2D para desktop com mouse e teclado; o layout se adapta a telas estreitas, mas não há controles completos para celular. Sem som, habilidades ativas, neblina de guerra, campanhas, diplomacia, equipes ou replay. As unidades caminham em linha reta e podem atravessar terreno, construções e outras unidades; o rio é decorativo. Construções se materializam no ponto escolhido pelo trabalhador e levam tempo para terminar, sem ele precisar ficar trabalhando ali. O cliente desenha os snapshots sem interpolação de posição; movimento a 10 Hz pode parecer menos suave com latência.
+Este MVP é uma arena RTS 2D para desktop com mouse e teclado; o layout se adapta a telas estreitas, mas não há controles completos para celular. Sem som, habilidades ativas, neblina de guerra, campanhas, diplomacia, equipes ou replay. A navegação considera terreno e construções; unidades móveis ainda podem se sobrepor. Construções se materializam no ponto escolhido pelo trabalhador e levam tempo para terminar, sem ele precisar ficar trabalhando ali. O cliente desenha os snapshots sem interpolação de posição; movimento a 10 Hz pode parecer menos suave com latência.
 
 Partidas ficam **somente na memória**: reiniciar, suspender ou atualizar o servidor apaga todas as salas. Salas sem conexões por 30 minutos são removidas. Não há recuperação após reinício nem reserva de vaga fora da sessão da aba. Não aumente o número de instâncias nesta versão: processos diferentes não compartilham salas.
 
@@ -166,3 +166,14 @@ Evolução sugerida: (1) teste dos quatro amigos e ajustes de equilíbrio, (2) c
 - Limites: 30 salas no servidor, 3 criadas por endereço de conexão, 20 comandos/jogador/s, 100 conexões totais e 24 por endereço de conexão, além dos limites de entrada/reconexão. Salas expiram após 30 minutos sem conexão ou 6 horas de vida.
 - Convites continuam permitindo entrada a quem possuir o código; não há aprovação/expulsão nem salvamento permanente. Reinício e suspensão do plano gratuito apagam as partidas.
 - Comandos inválidos são rejeitados e atualizações de movimento são agrupadas no ciclo de 10 Hz. Há testes de regressão para Host, Origin, tamanho, conteúdo, autenticação e frequência.
+
+
+## Salão, times e Vale das Três Pontes — 0.3.0
+
+Antes de iniciar, o anfitrião escolhe o time de cada participante e adiciona/remove computadores nas vagas livres. Mesmo número significa aliados; números diferentes são inimigos. Há quatro vagas e são necessários pelo menos dois times. Humanos continuam entrando pelo convite nas vagas disponíveis. Para abrir uma vaga ocupada por uma máquina, remova-a antes de convidar. A configuração fica bloqueada após o início; esta versão não substitui automaticamente um humano desconectado.
+
+O mapa original Vale das Três Pontes possui rio atravessável somente nas três pontes, florestas e rochas que bloqueiam movimento e construção, e quatro acampamentos com dois guardiões neutros cada. Eliminar o último guardião rende 120 de ouro ao jogador responsável pelo golpe final. Guardiões defendem sua área. O terreno e a navegação são calculados pelo servidor; o cliente apenas os desenha. Rotas usam uma grade limitada e levam em conta construções. Unidades ainda podem se sobrepor entre si; não há formação de exército nem colisão entre unidades móveis.
+
+Aliados não recebem ataques automáticos nem ordens de ataque uns dos outros, mas cada comandante conserva controle exclusivo das próprias unidades e recursos. A vitória ocorre quando resta um único time com cidadelas. Um jogador eliminado acompanha o resultado do time.
+
+Esta atualização adiciona terreno e acampamentos à base existente. Ainda não inclui névoa de guerra, lojas, inventário de itens ou estruturas capturáveis. O mapa é visível para todos. O visual continua sendo arte original desenhada em Canvas. Salvar/reiniciar o servidor apaga as partidas. Botões do salão permitem jogos como humano + computador contra duas máquinas.
