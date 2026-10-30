@@ -1,2 +1,2 @@
-{"name":"arte-da-guerra","version":"0.1.1","private":true,"type":"module","engines":{"node":">=22"},"scripts":{"start":"node server.js","test":"node --test"}}
+{"name":"arte-da-guerra","version":"0.2.0","private":true,"type":"module","engines":{"node":">=22"},"scripts":{"start":"node server.js","test":"node --test"}}
 

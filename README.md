@@ -1,6 +1,6 @@
 # Arte da Guerra
 
-MVP de RTS original para navegador, em português, com salas privadas para 2 a 4 pessoas e treino solo contra três guardiões. Não utiliza nomes, personagens, mapas, áudio, artes ou arquivos de Warcraft. Todo o visual é desenhado em Canvas com formas originais; não há dependências de execução nem serviços externos.
+RTS original para navegador, em português, com salas privadas para 2 a 4 pessoas e treino solo contra três guardiões. Não utiliza nomes, personagens, mapas, áudio, artes ou arquivos de Warcraft. Todo o visual é desenhado em Canvas com formas originais; não há dependências de execução nem serviços externos.
 
 ## Download do itch.io
 
@@ -27,8 +27,10 @@ Não é preciso executar `npm install` para jogar: só são usados módulos nati
 
 - **Clique esquerdo:** seleciona unidade ou construção. Arraste uma caixa para selecionar várias unidades suas; Shift adiciona e duplo clique seleciona unidades do mesmo tipo na tela.
 - **Clique direito:** move no chão, coleta em árvores/cristais ou ataca um inimigo. Trabalhadores coletam; soldados, arqueiros e torres atacam. Unidades paradas defendem a área automaticamente.
-- **Cidadela selecionada:** cria trabalhadores. **Trabalhador selecionado:** escolhe quartel ou torre e depois clica no terreno a até 250 passos dele. A construção dura 10 segundos e ocupa espaço. A área de construção é validada pelo servidor.
+- **Cidadela selecionada:** cria trabalhadores. **Trabalhador selecionado:** escolhe quartel, torre ou Salão dos Heróis. O local precisa estar a até 250 passos do trabalhador e 300 de uma construção própria pronta, ligada à cidadela por uma cadeia de construções prontas. Obras levam 10 segundos; obras inacabadas não estendem o território. É proibido construir a menos de 360 passos de uma cidadela inimiga. A prévia verde/vermelha mostra a validade e o motivo; o servidor confere tudo novamente.
 - **Quartel selecionado:** treina soldados e arqueiros. Até 5 unidades por fila. Limite de 65 entidades por jogador (inclui construções e itens nas filas) e 18 construções.
+- **Salão dos Heróis selecionado:** escolha um entre seis heróis. A escolha fica registrada ao iniciar o recrutamento e vale até o fim da partida. Há no máximo um herói vivo ou em treinamento por jogador, mesmo com vários salões. Se morrer, recrute novamente o mesmo herói pelo custo normal; ele retorna no nível 1. Uma obra ou salão destruído não devolve recursos.
+- **Evoluir:** selecione uma unidade ou construção sua para comprar o próximo nível, até o nível 3. O botão informa custo em ouro/madeira e tempo. Uma construção com fila precisa concluir o treinamento antes de evoluir; durante sua evolução, não pode recrutar.
 - **Câmera:** WASD, setas, bordas do mapa ou arraste com botão do meio. Espaço centraliza sua cidadela. Roda do mouse aproxima/afasta. Clique no minimapa para navegar.
 - **X:** para unidades selecionadas. **Esc:** cancela o posicionamento de uma construção.
 - **Vitória:** vence o último jogador com cidadela. Destruir a cidadela elimina também o exército e as construções de seu dono. Rendição tem o mesmo efeito. Todos contra todos; ainda não há equipes.
@@ -40,8 +42,42 @@ Não é preciso executar `npm install` para jogar: só são usados módulos nati
 | Arqueiro | 85 | 40 | 8 s |
 | Quartel | 140 | 100 | 10 s |
 | Torre | 100 | 80 | 10 s |
+| Salão dos Heróis | 180 | 140 | 10 s |
+| Herói (qualquer um dos seis) | 220 | 140 | 14 s |
 
 Cada jogador começa com 300 de ouro, 200 de madeira, 4 trabalhadores, 1 soldado e sua cidadela. Um trabalhador coleta 7 recursos/s ao alcançar a fonte. Recursos entram diretamente no saldo, sem viagens de entrega. Os guardiões dividem a coleta entre ouro e madeira, constroem quartel, recrutam e avançam após 45 segundos.
+
+## Combate, heróis e evoluções — versão 0.2.0
+
+Golpes corpo a corpo, flechas e disparos mágicos têm efeitos visuais emitidos a partir dos ataques efetivamente calculados pelo servidor, inclusive na defesa automática e nas torres. O dano é aplicado no tick do ataque; a animação é uma representação visual curta desse evento, não uma segunda simulação de dano. Eventos têm identificação única, prazo de expiração e limite de armazenamento; snapshots repetidos não repetem o mesmo ataque.
+
+Os seis heróis têm nomes, aparência, vida, velocidade, alcance e cadência próprios. Cada um causa **25% mais dano** ao seu rival favorável e **20% menos dano** ao seu rival desfavorável. Nos outros confrontos não há modificador. Unidades comuns e construções não participam desse ciclo.
+
+| Herói | Vantagem contra | Fraqueza contra | Estilo |
+| --- | --- | --- | --- |
+| Bastião | Vulto | Vigília | Defensor corpo a corpo |
+| Vulto | Batedora | Bastião | Duelista veloz |
+| Batedora | Tempestade | Vulto | Arqueira de longo alcance |
+| Tempestade | Brasa | Batedora | Conjurador a distância |
+| Brasa | Vigília | Tempestade | Assalto corpo a corpo |
+| Vigília | Bastião | Brasa | Guardião de alcance curto |
+
+A relação favorável não garante vitória: nível, vida restante, distância, movimentação e apoio do exército também contam. Os valores iniciais precisam de ajuste após partidas reais entre os quatro amigos.
+
+Cada evolução acrescenta, em relação ao nível 1, 35% de vida máxima e 25% de dano, quando aplicável. Unidades ganham 5% de velocidade por nível; trabalhadores também coletam 25% mais por nível. Cidadela, quartel e salão reduzem o tempo de recrutamento em 15% por nível (nível 3: 30% menos que o nível 1). Unidades novas começam no nível 1. Unidades e torres continuam agindo durante a evolução, usando os atributos antigos até ela terminar. A vida atual só aumenta pela diferença entre as capacidades: evoluir não apaga dano já sofrido.
+
+| Entidade | Nível 1 → 2: ouro / madeira | Tempo | Nível 2 → 3: ouro / madeira | Tempo |
+| --- | ---: | ---: | ---: | ---: |
+| Trabalhador | 80 / 40 | 10 s | 160 / 80 | 15 s |
+| Soldado | 110 / 70 | 10 s | 220 / 140 | 15 s |
+| Arqueiro | 120 / 80 | 10 s | 240 / 160 | 15 s |
+| Herói | 260 / 180 | 14 s | 520 / 360 | 21 s |
+| Cidadela | 240 / 180 | 16 s | 480 / 360 | 24 s |
+| Quartel | 180 / 140 | 16 s | 360 / 280 | 24 s |
+| Torre | 160 / 120 | 16 s | 320 / 240 | 24 s |
+| Salão dos Heróis | 240 / 180 | 16 s | 480 / 360 | 24 s |
+
+Se uma construção intermediária cair, as estruturas isoladas continuam funcionando, mas deixam de liberar novos locais de construção até a ligação à cidadela ser restabelecida. O raio protegido das bases adversárias continua valendo mesmo quando existe uma cadeia próxima de torres próprias.
 
 ## Publicar para compartilhar o link
 
@@ -86,7 +122,9 @@ Canvas de cada jogador — desenho a requestAnimationFrame
 
 O cliente nunca determina dano, recursos, unidades produzidas ou resultado. Cada ordem é aplicada serialmente no processo Node; a simulação decide o estado seguinte. Snapshots completos evitam divergência acumulada e simplificam reconexão. O transporte é **SSE para estado + HTTP POST para ordens**, sobre TCP, em vez de WebSocket; é comunicação em tempo real com servidor autoritativo. A simulação fica separada do transporte para permitir futura troca por WebSocket sem reescrever as regras.
 
-- `game.js`: regras e simulação, sem HTTP ou acesso ao navegador.
+- `game.js`: simulação autoritativa, sem HTTP ou acesso ao navegador.
+- `public/rules.js`: custos, atributos, heróis, níveis e validação de terreno compartilhados com a prévia do cliente. Só o servidor efetiva mudanças.
+- `public/combat-effects.js`: consumo dos eventos de ataque e efeitos no Canvas.
 - `server.js`: servidor HTTP nativo, salas, tokens, comandos, SSE, limites e expiração.
 - `public/client.js`: entrada, seleção, câmera, comandos, interface e arte procedural.
 - `public/style.css` e `public/index.html`: interface responsiva em português e manual dentro do jogo.
@@ -102,17 +140,19 @@ Comandos têm limite de frequência e corpo de até 8 KB; há limites de criaç�
 npm test
 ```
 
-Cobrem quatro vagas, início pelo anfitrião, ocultação de tokens, rejeição de ordens sobre unidades alheias, coordenadas inválidas, coleta e esgotamento, movimento, custo/tempo de construção e treinamento, combate, eliminação, vitória, rendição, guardiões e quatro clientes HTTP recebendo uma partida compartilhada com autorização.
+Cobrem quatro vagas, autorização, segurança HTTP, coleta, movimento, combate e vitória; território conectado e bloqueio de construção invasora; herói único e escolha permanente; custos, tempo e atributos das evoluções; expiração e deduplicação dos efeitos; ações e renderização do cliente em ambiente simulado. O teste multiplayer abre quatro conexões SSE reais com o servidor local, coleta recursos, recruta os quatro heróis, evolui uma unidade e confirma os mesmos eventos de ataque para todos. A suíte leva aproximadamente 25 segundos por respeitar os tempos reais de recrutamento nesse teste.
 
-Também houve verificação no navegador: entrada no treino, renderização do mapa, seleção da cidadela e fila de recrutamento com desconto de ouro. Isso não substitui um teste de latência real com quatro pessoas em redes distintas.
+Um teste adicional executa 108 duelos controlados: seis relações favoráveis, três níveis, três distâncias iniciais e ambas as ordens de criação. Todos os confrontos favorecem o herói previsto; isso verifica a regra em condições iguais, sem garantir equilíbrio em partidas com movimentação manual e exércitos.
+
+Nesta atualização, foram conferidas as operações do cliente e uma prévia do desenho real em Canvas. Os testes de interface usam um ambiente simulado; não validam o layout completo em um navegador. Ainda é necessário jogar com os quatro amigos em redes distintas para avaliar latência, legibilidade e equilíbrio durante partidas reais.
 
 ## Limites assumidos e próximos passos
 
-Este MVP é uma arena RTS 2D para desktop com mouse e teclado; o layout se adapta a telas estreitas, mas não há controles completos para celular. Sem som, heróis, habilidades, neblina de guerra, campanhas, diplomacia, equipes ou replay. As unidades caminham em linha reta e podem atravessar terreno, construções e outras unidades; o rio é decorativo. Construções se materializam no ponto escolhido pelo trabalhador e levam tempo para terminar, sem ele precisar ficar trabalhando ali. O cliente desenha os snapshots sem interpolação de posição; movimento a 10 Hz pode parecer menos suave com latência.
+Este MVP é uma arena RTS 2D para desktop com mouse e teclado; o layout se adapta a telas estreitas, mas não há controles completos para celular. Sem som, habilidades ativas, neblina de guerra, campanhas, diplomacia, equipes ou replay. As unidades caminham em linha reta e podem atravessar terreno, construções e outras unidades; o rio é decorativo. Construções se materializam no ponto escolhido pelo trabalhador e levam tempo para terminar, sem ele precisar ficar trabalhando ali. O cliente desenha os snapshots sem interpolação de posição; movimento a 10 Hz pode parecer menos suave com latência.
 
 Partidas ficam **somente na memória**: reiniciar, suspender ou atualizar o servidor apaga todas as salas. Salas sem conexões por 30 minutos são removidas. Não há recuperação após reinício nem reserva de vaga fora da sessão da aba. Não aumente o número de instâncias nesta versão: processos diferentes não compartilham salas.
 
-Evolução sugerida: (1) teste dos quatro amigos e ajustes de equilíbrio, (2) colisão e navegação por grade, (3) interpolação e orçamento de rede, (4) neblina de guerra calculada no servidor com snapshots por jogador, (5) herói original e habilidades, (6) persistência de partidas e roteamento de salas entre processos. Manter testes autoritativos a cada etapa.
+Evolução sugerida: (1) teste dos quatro amigos e ajustes de equilíbrio, (2) colisão e navegação por grade, (3) interpolação e orçamento de rede, (4) neblina de guerra calculada no servidor com snapshots por jogador, (5) habilidades ativas e ajustes dos seis heróis, (6) persistência de partidas e roteamento de salas entre processos. Manter testes autoritativos a cada etapa.
 
 
 
