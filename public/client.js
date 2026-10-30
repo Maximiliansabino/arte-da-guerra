@@ -24,7 +24,7 @@ async function enter(mode){try{const name=$('#name').value.trim()||'Comandante';
 $('#create').onclick=()=>enter('create');$('#join').onclick=()=>enter('join');$('#practice').onclick=()=>enter('practice');
 $('#help').onclick=()=>$('#instructions').showModal();$('#closehelp').onclick=()=>$('#instructions').close();
 $('#copy').onclick=async()=>{const url=new URL(location.href);url.search=`?room=${session.code}`;try{await navigator.clipboard.writeText(url.href);toast('Convite copiado. Envie aos seus amigos!');}catch{toast(`Código da sala: ${session.code}`);}};
-$('#start').onclick=async()=>{try{await api('start',{});}catch(e){toast(e.message);}};
+$('#start').onclick=async()=>{try{await lobbyQueue;await api('start',{});}catch(e){toast(e.message);}};
 $('#again').onclick=()=>{sessionStorage.removeItem('arte-da-guerra-session');location.href='/';};
 $('#surrender').onclick=()=>{if(state?.phase==='playing'&&confirm('Render-se elimina suas unidades. Deseja continuar?'))send({type:'surrender'});};
 function showGame(){$('#welcome').hidden=true;$('#game').hidden=false;$('#sitefooter').hidden=true;$('#roomcode').textContent=session.code;resize();connect();}
@@ -32,7 +32,12 @@ async function connect(){if(reconnecting)return;reconnecting=true;let first=true
  while(session){try{streamController=new AbortController();const res=await fetch(`/api/events?room=${session.code}`,{headers:{Authorization:`Bearer ${session.token}`},signal:streamController.signal});if(!res.ok){sessionStorage.removeItem('arte-da-guerra-session');toast('Sala expirada. Recarregue para criar uma nova.');break;}$('#connection').textContent='● Servidor conectado · 10 atualizações/s';const reader=res.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let idx;while((idx=buffer.indexOf('\n\n'))>=0){const msg=buffer.slice(0,idx);buffer=buffer.slice(idx+2);if(msg.startsWith('data: ')){state=JSON.parse(msg.slice(6));combatEffects.ingest(state,performance.now());if(first&&state.entities.length){home();first=false;}updateUI();}}} }catch{}
  $('#connection').textContent='◌ Conexão interrompida · reconectando…';await new Promise(r=>setTimeout(r,1500));
  }reconnecting=false;}
-async function lobbyAction(data){try{await api('lobby',data);}catch(e){toast(e.message);}}
+let lobbyQueue=Promise.resolve(),lobbyPending=0;
+function lobbyAction(data){
+ lobbyPending++;$('#start').disabled=true;
+ lobbyQueue=lobbyQueue.then(()=>api('lobby',data)).catch(e=>toast(e.message)).finally(()=>{lobbyPending--;if(state)updateUI();});
+ return lobbyQueue;
+}
 function mine(){return state?.players.find(p=>p.id===session?.id);}
 function home(){const base=state?.entities.find(e=>e.owner===session.id&&e.type==='base');if(base)camera={x:base.x,y:base.y};}
 function send(data) {
@@ -55,7 +60,7 @@ function updateUI(){const p=mine();if(!p)return;$('#gold').textContent=Math.floo
   if(host&&(!member||member.bot)){const button=document.createElement('button');button.textContent=member?'Remover máquina':'Adicionar máquina';button.setAttribute('aria-label',`${button.textContent} na vaga ${slot+1}`);button.onclick=()=>lobbyAction({action:member?'removeBot':'bot',slot});el.append(button);}
   roster.append(el);
  }
- $('#start').disabled=!host||state.players.length<2||new Set(state.players.map(p=>p.team)).size<2;
+ $('#start').disabled=lobbyPending>0||!host||state.players.length<2||new Set(state.players.map(p=>p.team)).size<2;
  $('#lobbyhint').textContent=host?'Mesmo time = aliados. Times diferentes = inimigos. Preencha vagas com máquinas ou aguarde seus amigos. São necessários dois times.':'O anfitrião escolhe os times e as máquinas antes de iniciar.';
  if(state.phase==='finished'){
   const winners=state.players.filter(p=>p.team===state.winningTeam);
