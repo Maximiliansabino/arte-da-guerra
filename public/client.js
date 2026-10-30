@@ -1,3 +1,5 @@
+import {MAP} from './terrain.js';
+import {allied} from './rules.js';
 import {
   WORLD, COST, STATS, HEROES, HERO_TYPES, BUILDING_TYPES, LABELS, ICONS,
   BUILD_RULES, MAX_LEVEL, entityStats, upgradeCost, upgradeDuration,
@@ -30,6 +32,7 @@ async function connect(){if(reconnecting)return;reconnecting=true;let first=true
  while(session){try{streamController=new AbortController();const res=await fetch(`/api/events?room=${session.code}`,{headers:{Authorization:`Bearer ${session.token}`},signal:streamController.signal});if(!res.ok){sessionStorage.removeItem('arte-da-guerra-session');toast('Sala expirada. Recarregue para criar uma nova.');break;}$('#connection').textContent='● Servidor conectado · 10 atualizações/s';const reader=res.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let idx;while((idx=buffer.indexOf('\n\n'))>=0){const msg=buffer.slice(0,idx);buffer=buffer.slice(idx+2);if(msg.startsWith('data: ')){state=JSON.parse(msg.slice(6));combatEffects.ingest(state,performance.now());if(first&&state.entities.length){home();first=false;}updateUI();}}} }catch{}
  $('#connection').textContent='◌ Conexão interrompida · reconectando…';await new Promise(r=>setTimeout(r,1500));
  }reconnecting=false;}
+async function lobbyAction(data){try{await api('lobby',data);}catch(e){toast(e.message);}}
 function mine(){return state?.players.find(p=>p.id===session?.id);}
 function home(){const base=state?.entities.find(e=>e.owner===session.id&&e.type==='base');if(base)camera={x:base.x,y:base.y};}
 function send(data) {
@@ -40,8 +43,24 @@ function send(data) {
 function updateUI(){const p=mine();if(!p)return;$('#gold').textContent=Math.floor(p.gold);$('#wood').textContent=Math.floor(p.wood);$('#pop').textContent=ownPopulation();$('#clock').textContent=`${Math.floor(state.time/60).toString().padStart(2,'0')}:${Math.floor(state.time%60).toString().padStart(2,'0')}`;
  $('#phase').textContent=state.phase==='lobby'?'Aguardando comandantes':state.phase==='finished'?'Expedição encerrada':p.defeated?'Sua cidadela caiu · observando':'Batalha pela fronteira';
  $('#lobby').hidden=state.phase!=='lobby';$('#end').hidden=state.phase!=='finished';$('#start').disabled=state.players.length<2||state.players[0].id!==p.id;$('#lobbyhint').textContent=state.players[0].id===p.id?'Inicie quando todos estiverem prontos (2–4 jogadores).':'Aguardando o anfitrião iniciar a partida.';
- const roster=$('#players');roster.replaceChildren();for(let i=0;i<4;i++){const el=document.createElement('div');el.className='player'+(!state.players[i]?' empty':'');el.style.setProperty('--p',colors[i]);el.textContent=state.players[i]?.name||'Aguardando amigo…';roster.append(el);}
- if(state.phase==='finished')$('#winner').textContent=state.winner?`${state.players.find(p=>p.id===state.winner).name} venceu!`:'Empate na fronteira';
+ const host=state.players[0].id===p.id;
+ const roster=$('#players');roster.replaceChildren();
+ for(let slot=0;slot<4;slot++){
+  const member=state.players.find(p=>p.slot===slot),el=document.createElement('div');el.className='player lobby-row';el.style.setProperty('--p',colors[slot]);
+  const name=document.createElement('span');name.textContent=member?member.name+(member.bot?' · Computador':' · Jogador'):'Vaga livre';el.append(name);
+  if(member){const select=document.createElement('select');select.setAttribute('aria-label',`Time da vaga ${slot+1}`);
+   for(let t=0;t<4;t++){const option=document.createElement('option');option.value=t;option.textContent=`Time ${t+1}`;select.append(option);}select.value=member.team;select.disabled=!host;
+   select.onchange=()=>lobbyAction({action:'team',slot,team:Number(select.value)});el.append(select);
+  }
+  if(host&&(!member||member.bot)){const button=document.createElement('button');button.textContent=member?'Remover máquina':'Adicionar máquina';button.setAttribute('aria-label',`${button.textContent} na vaga ${slot+1}`);button.onclick=()=>lobbyAction({action:member?'removeBot':'bot',slot});el.append(button);}
+  roster.append(el);
+ }
+ $('#start').disabled=!host||state.players.length<2||new Set(state.players.map(p=>p.team)).size<2;
+ $('#lobbyhint').textContent=host?'Mesmo time = aliados. Times diferentes = inimigos. Preencha vagas com máquinas ou aguarde seus amigos. São necessários dois times.':'O anfitrião escolhe os times e as máquinas antes de iniciar.';
+ if(state.phase==='finished'){
+  const winners=state.players.filter(p=>!p.defeated&&p.team===state.winningTeam);
+  $('#winner').textContent=state.winner?(winners.length>1?`Time ${state.winningTeam+1} venceu: ${winners.map(p=>p.name).join(', ')}`:`${winners[0]?.name||'Comandante'} venceu!`):'Empate na fronteira';
+ }
  selected=new Set([...selected].filter(id=>state.entities.some(e=>e.id===id)));
  if(building&&(state.phase!=='playing'||p.defeated||!state.entities.some(e=>e.id===builderId)))setBuild(null);
  refreshActions();}
@@ -191,7 +210,7 @@ canvas.onpointerdown = async event => {
   if (building) {setBuild(null); return;}
   const w = world(p), target = entityAt(w);
   const resource = state?.resources.find(t => t.amount > 0 && Math.hypot(t.x - w.x, t.y - w.y) < 35);
-  if (target && target.owner !== session?.id) send({type: 'attack', target: target.id});
+  if (target && !allied(state,target.owner,session?.id)) send({type: 'attack', target: target.id});
   else if (resource) send({type: 'gather', target: resource.id});
   else send({type: 'move', ...w});
   marker = {...w, time: performance.now()}; return;
@@ -304,7 +323,7 @@ function drawBuildZones() {
   ctx.fillStyle = '#9edda70d';ctx.strokeStyle = '#a5dca77d';
   ctx.beginPath();ctx.arc(e.x,e.y,BUILD_RULES.linkRange,0,Math.PI*2);ctx.fill();ctx.stroke();
  }
- for (const e of state.entities.filter(e => e.type === 'base' && e.owner !== session.id && e.hp > 0)) {
+ for (const e of state.entities.filter(e => e.type === 'base' && !allied(state,e.owner,session.id) && e.hp > 0)) {
   ctx.fillStyle = '#de715818';ctx.strokeStyle = '#f59b8988';
   ctx.beginPath();ctx.arc(e.x,e.y,BUILD_RULES.enemyBaseRadius,0,Math.PI*2);ctx.fill();ctx.stroke();
  }
@@ -325,13 +344,19 @@ function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;c
  // A deterministic, original landscape: meadow patches, trails, stream and ruins.
  for(let i=0;i<550;i++){const x=hash(i)*1800,y=hash(i+700)*1800;ellipse(x,y,hash(i+1)*65+8,hash(i+2)*30+5,i%3?'#45634340':'#203f3135');}
  ctx.lineCap='round';ctx.strokeStyle='#64734a66';ctx.lineWidth=90;ctx.beginPath();ctx.moveTo(220,220);ctx.bezierCurveTo(600,700,1300,900,1580,1580);ctx.moveTo(1580,220);ctx.bezierCurveTo(950,650,700,1200,220,1580);ctx.stroke();
- ctx.strokeStyle='#233e35';ctx.lineWidth=75;ctx.beginPath();ctx.moveTo(-50,970);ctx.bezierCurveTo(430,820,450,1200,900,1000);ctx.bezierCurveTo(1350,800,1550,1050,1850,800);ctx.stroke();ctx.strokeStyle='#4d7b725c';ctx.lineWidth=52;ctx.stroke();
+ if(state?.mapId){
+  ctx.fillStyle='#244e59';ctx.fillRect(840,0,120,1800);ctx.fillStyle='#6a8670';ctx.fillRect(830,0,10,1800);ctx.fillRect(960,0,10,1800);
+  for(const y of MAP.bridges){ctx.fillStyle='#ac9971';ctx.fillRect(820,y-65,160,130);ctx.strokeStyle='#655d48';ctx.lineWidth=3;for(let n=0;n<9;n++){ctx.beginPath();ctx.moveTo(820+n*20,y-65);ctx.lineTo(820+n*20,y+65);ctx.stroke();}}
+  for(const o of MAP.obstacles){if(o.type==='tree')tree(o.x,o.y);else{ellipse(o.x,o.y,o.r,o.r*.7,'#617266');polygon([[o.x-o.r,o.y],[o.x-10,o.y-o.r],[o.x+o.r,o.y-12],[o.x+16,o.y+20]],'#88958b','#3e5148');}}
+  for(const camp of state.camps||[]){ellipse(camp.x,camp.y,65,45,camp.cleared?'#66845255':'#ab7c3c55');ctx.fillStyle='#efd9a5';ctx.font='12px Segoe UI';ctx.textAlign='center';ctx.fillText(camp.cleared?'Acampamento liberado':'Guardiões · 120 ouro',camp.x,camp.y+65);}
+ }
+
  for(let i=0;i<900;i++){const x=hash(i+1500)*1800,y=hash(i+3000)*1800;ctx.fillStyle=i%8===0?'#d3bc7255':'#8eaa5b44';ctx.fillRect(x,y,2,3);}
  for(let i=0;i<80;i++){const x=hash(i+880)*1800,y=hash(i+940)*1800;if(x<80||x>1720||y<80||y>1720)tree(x,y);}
  for(const res of state?.resources||[])if(res.amount>0){if(res.type==='wood')tree(res.x,res.y);else crystal(res.x,res.y);}
  if(building && state) drawBuildZones();
  const entities=(state?.entities||[]).slice().sort((a,b)=>a.y-b.y);
- for(const e of entities){const p=state.players.find(p=>p.id===e.owner),col=colors[p.slot];const isBuilding=BUILDING_TYPES.includes(e.type);if(selected.has(e.id)){ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(e.x,e.y+7,isBuilding?53:18,isBuilding?26:10,0,0,Math.PI*2);ctx.stroke();}if(isBuilding)buildingArt(e,col);else unitArt(e,col,now);drawEntityProgress(e,isBuilding,col,now);
+ for(const e of entities){const p=state.players.find(p=>p.id===e.owner)||{slot:4,name:'Guardião neutro'},col=colors[p.slot]||'#d4a478';const isBuilding=BUILDING_TYPES.includes(e.type);if(selected.has(e.id)){ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(e.x,e.y+7,isBuilding?53:18,isBuilding?26:10,0,0,Math.PI*2);ctx.stroke();}if(isBuilding)buildingArt(e,col);else if(e.type==='guardian'){ellipse(e.x,e.y,18,14,'#82694a');polygon([[e.x-18,e.y],[e.x-13,e.y-25],[e.x-3,e.y-9],[e.x+12,e.y-24],[e.x+18,e.y]],'#bca47b','#443b2e');}else unitArt(e,col,now);drawEntityProgress(e,isBuilding,col,now);
  if(e.hp<e.maxHp||selected.has(e.id)||HEROES[e.type]){const width=isBuilding?65:HEROES[e.type]?42:29,top=e.y-(isBuilding?85:HEROES[e.type]?57:31);ctx.fillStyle='#0e2019';ctx.fillRect(e.x-width/2-1,top-1,width+2,6);ctx.fillStyle=e.hp/e.maxHp>.35?col:'#e48a69';ctx.fillRect(e.x-width/2,top,width*Math.max(0,e.hp/e.maxHp),4);}
  if(e.type==='base'){ctx.font='12px Segoe UI';ctx.textAlign='center';ctx.fillStyle=col;ctx.fillText(p.name,e.x,e.y+65);}
  if(e.queue.length){ctx.fillStyle='#d5bd73';ctx.fillRect(e.x-25,e.y+49,50*Math.min(1,e.progress/trainDuration(e.queue[0],e)),3);}
@@ -341,8 +366,8 @@ function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;c
  if (building && pointer && state) drawBuildGhost();
  if(marker&&now-marker.time<800){ctx.strokeStyle='#e4d28b';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(marker.x,marker.y,12+(now-marker.time)/35,6+(now-marker.time)/70,0,0,Math.PI*2);ctx.stroke();}
  ctx.restore();if(drag&&!drag.pan){ctx.fillStyle='#bad99822';ctx.strokeStyle='#c5dfab';ctx.fillRect(drag.from.x,drag.from.y,drag.to.x-drag.from.x,drag.to.y-drag.from.y);ctx.strokeRect(drag.from.x,drag.from.y,drag.to.x-drag.from.x,drag.to.y-drag.from.y);}
- if(state){const s=Math.min(150,cw*.2),x=cw-s-18,y=ch-s-18;minimap={s,x,y};ctx.fillStyle='#101e18ee';ctx.fillRect(x-5,y-5,s+10,s+10);ctx.strokeStyle='#798660';ctx.strokeRect(x-5,y-5,s+10,s+10);ctx.fillStyle='#3a5a3b';ctx.fillRect(x,y,s,s);for(const e of state.entities){ctx.fillStyle=colors[state.players.find(p=>p.id===e.owner).slot];const sz=e.type==='base'?6:3;ctx.fillRect(x+e.x/1800*s-sz/2,y+e.y/1800*s-sz/2,sz,sz);}ctx.strokeStyle='#e8e6b8';ctx.strokeRect(x+(camera.x-cw/2/zoom)/1800*s,y+(camera.y-ch/2/zoom)/1800*s,cw/zoom/1800*s,ch/zoom/1800*s);
- if(state.phase==='playing'){ctx.textAlign='left';ctx.font='10px Segoe UI';state.players.forEach((p,i)=>{ctx.fillStyle=colors[p.slot];ctx.fillText(`${p.defeated?'×':'●'} ${p.name}`,18,ch-18-(state.players.length-i-1)*18);});}}
+ if(state){const s=Math.min(150,cw*.2),x=cw-s-18,y=ch-s-18;minimap={s,x,y};ctx.fillStyle='#101e18ee';ctx.fillRect(x-5,y-5,s+10,s+10);ctx.strokeStyle='#798660';ctx.strokeRect(x-5,y-5,s+10,s+10);ctx.fillStyle='#3a5a3b';ctx.fillRect(x,y,s,s);for(const e of state.entities){ctx.fillStyle=colors[state.players.find(p=>p.id===e.owner)?.slot]||'#d4a478';const sz=e.type==='base'?6:3;ctx.fillRect(x+e.x/1800*s-sz/2,y+e.y/1800*s-sz/2,sz,sz);}ctx.strokeStyle='#e8e6b8';ctx.strokeRect(x+(camera.x-cw/2/zoom)/1800*s,y+(camera.y-ch/2/zoom)/1800*s,cw/zoom/1800*s,ch/zoom/1800*s);
+ if(state.phase==='playing'){ctx.textAlign='left';ctx.font='10px Segoe UI';state.players.forEach((p,i)=>{ctx.fillStyle=colors[p.slot];ctx.fillText(`${p.defeated?'×':'●'} ${p.name} · Time ${p.team+1}`,18,ch-18-(state.players.length-i-1)*18);});}}
  requestAnimationFrame(render);}
 requestAnimationFrame(render);if(saved&&(!invite||invite===saved.code)){session=saved;showGame();}
 
