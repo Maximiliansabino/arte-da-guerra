@@ -41,7 +41,7 @@ export class CombatEffects {
       batchIds.add(event.id);
       this.lastId = Math.max(this.lastId, event.id);
       if (!Object.hasOwn(TIMING, event.kind) || !validPoint(event.from) || !validPoint(event.to)) continue;
-      if (!Number.isFinite(event.at) || !Number.isFinite(event.damage) || event.damage <= 0) continue;
+      if (!Number.isFinite(event.at) || !Number.isFinite(event.damage) || event.damage < 0) continue;
       const age = Math.max(0, (snapshot.time - event.at) * 1000);
       // Reconnecting must not replay the server's short history as fresh attacks.
       if (age >= TIMING[event.kind].life) continue;
@@ -52,6 +52,7 @@ export class CombatEffects {
         from: { ...event.from },
         to: { ...event.to },
         damage: event.damage,
+        blocked: Number.isFinite(event.blocked) ? Math.max(0,event.blocked) : 0,
         started: now - age
       });
     }
@@ -131,7 +132,7 @@ export class CombatEffects {
         const impact = (age - timing.travel) / (timing.life - timing.travel);
         ctx.save();
         ctx.globalAlpha = 1 - impact;
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = event.blocked ? '#b8d9f3' : color;
         ctx.fillStyle = '#fff0c9';
         ctx.lineWidth = 3 * (1 - impact) + 1;
         circle(ctx, to.x, to.y, 5 + impact * 20);
@@ -149,7 +150,7 @@ export class CombatEffects {
         ctx.textAlign = 'center';
         ctx.lineWidth = 3;
         ctx.strokeStyle = '#18231e';
-        const label = `−${Math.round(event.damage)}`;
+        const label = event.damage > 0 ? `−${Math.round(event.damage)}` : 'escudo';
         const labelY = to.y - 18 - impact * 24;
         ctx.strokeText(label, to.x, labelY);
         ctx.fillStyle = '#fff1cc';

@@ -1,36 +1,76 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Arte da Guerra</title><link rel="stylesheet" href="/style.css"></head>
+<html lang="pt-BR">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta name="theme-color" content="#0a1c1a"><meta name="description" content="Um RTS original de lendas brasileiras. Reúna seus amigos, escolha uma ordem e proteja sua fronteira.">
+ <title>Arte da Guerra · Lendas da Fronteira</title><link rel="stylesheet" href="/style.css">
+</head>
 <body>
-<header><a class="brand" href="/">◈ <span>ARTE DA GUERRA<small>ESTRATÉGIA ENTRE AMIGOS</small></span></a><div class="header-note">ESTRATÉGIA EM TEMPO REAL <i></i> VERSÃO 0.3.0</div><button id="help">Como jogar <span>?</span></button></header>
+<header>
+ <a class="brand" href="/" aria-label="Arte da Guerra, início"><span class="brand-mark">✦</span><span>ARTE DA GUERRA<small>LENDAS DA FRONTEIRA</small></span></a>
+ <div class="header-note"><span class="live-dot"></span> ESTRATÉGIA. MAGIA. AMIZADE.</div>
+ <div class="header-actions"><button id="audio" class="quiet-button" aria-label="Ativar ou silenciar efeitos sonoros" aria-pressed="false">♪ Som</button><button id="help" class="quiet-button">Como jogar <span>?</span></button></div>
+</header>
 <main>
 <section id="welcome">
- <div class="intro"><div class="eyebrow">QUATRO AMIGOS. UMA NOVA FRONTEIRA.</div><h1>Velhas alianças.<br><em>Novas conquistas.</em></h1><p>Erga sua cidadela, escolha seu herói e evolua seu exército. Dispute as terras da fronteira numa partida de estratégia feita para reunir a sua turma.</p><div class="features"><span>◈ 2–4 jogadores</span><span>⌁ Sala por convite</span><span>✦ 6 heróis originais</span></div></div>
- <div class="entry"><div class="eyebrow">SEU PRÓXIMO CAMPO DE BATALHA</div><h2>Entre na disputa</h2><label for="name">Nome do comandante</label><input id="name" maxlength="24" placeholder="Como seus amigos te chamam?" autocomplete="nickname"><button class="primary" id="create">Criar sala privada <span>→</span></button><div class="divider">OU USE UM CONVITE</div><label for="code">Código da sala</label><div class="join-row"><input id="code" placeholder="Cole o código do convite" maxlength="40"><button id="join">Entrar →</button></div><button class="practice" id="practice">⚔ Treinar contra 3 guardiões</button><p class="fine">Arte original em canvas • Sem instalação • Partidas livres</p></div>
+ <div class="welcome-art" aria-hidden="true"></div>
+ <div class="intro">
+  <div class="eyebrow"><span class="ornament">✦</span> UM MUNDO DE LENDAS BRASILEIRAS</div>
+  <h1>A fronteira vive.<br><em>A lenda é sua.</em></h1>
+  <p>As matas sussurram. Os rios despertam.<br>Reúna seus amigos, erga uma cidadela e conduza uma lenda ao campo de batalha.</p>
+  <div class="features"><span>◈ <b>6</b> heróis</span><span>✧ <b>18</b> habilidades</span><span>⌁ <b>4</b> ordens</span></div>
+  <div class="mode-story"><span>SOLO CONTRA IA</span><i>·</i><span>DUPLAS 2 × 2</span><i>·</i><span>AMIGOS × MÁQUINAS</span></div>
+ </div>
+ <div class="entry">
+  <span class="entry-number">01 / O CHAMADO</span><div class="eyebrow">SUA PRÓXIMA HISTÓRIA</div><h2>Reúna sua companhia.</h2>
+  <label for="name">Nome do comandante</label><input id="name" maxlength="24" placeholder="Como seus amigos te chamam?" autocomplete="nickname">
+  <button class="primary" id="create">Criar sala com amigos <span>↗</span></button>
+  <div class="divider">JÁ RECEBEU UM CONVITE?</div>
+  <label for="code">Código da sala</label><div class="join-row"><input id="code" placeholder="Cole o código aqui" maxlength="40"><button id="join">Entrar →</button></div>
+  <button class="practice" id="practice"><span>⚔</span> Treinar: você contra uma máquina <span>→</span></button>
+  <p class="fine">Partidas por convite · Mouse e teclado · Sem cadastro no jogo</p>
+ </div>
+ <div class="legend-ribbon" aria-label="Heróis da fronteira"><span>AS LENDAS RESPONDEM AO CHAMADO</span><div><b>Curupira</b><b>Saci</b><b>Iara</b><b>Cuca</b><b>Boitatá</b><b>Guardião do Luar</b></div></div>
 </section>
 <section id="game" hidden>
- <div class="gamebar"><div><span class="eyebrow">VALE DAS TRÊS PONTES</span><strong id="phase">Preparando a expedição</strong></div><div class="economy"><span title="Ouro">◆ <b id="gold">0</b> <small>OURO</small></span><span title="Madeira">♠ <b id="wood">0</b> <small>MADEIRA</small></span><span>⚑ <b id="pop">0</b><small> / 65</small></span></div><div id="clock">00:00</div></div>
- <div class="arena"><canvas id="map" tabindex="0" aria-label="Campo de batalha. Selecione unidades com clique ou arraste; clique direito para ordenar."></canvas><div class="map-caption">VALE DAS TRÊS PONTES <span>1800 × 1800</span></div><div id="lobby" class="lobby"><div class="eyebrow">SALA PRIVADA</div><h2>A expedição se reúne</h2><p>Convide amigos, escolha os times e adicione máquinas nas vagas livres.</p><div class="invite"><code id="roomcode"></code><button id="copy">Copiar convite ↗</button></div><div id="players"></div><button id="start" class="primary">Iniciar partida</button><p class="fine" id="lobbyhint">São necessários pelo menos dois jogadores.</p></div><div id="end" class="lobby" hidden><div class="eyebrow">FIM DA EXPEDIÇÃO</div><h2 id="winner"></h2><p>O último time com cidadelas em pé vence.</p><button id="again" class="primary">Voltar ao início</button></div><div id="buildhint" hidden>Construa ligado à sua cidadela · Verde: local válido · Esc cancela</div></div>
- <div class="commanddeck"><div class="selection"><div class="portrait" id="portrait">◈</div><div><div class="eyebrow">SUA SELEÇÃO</div><h3 id="selection">Nenhuma unidade</h3><p id="detail">Clique ou arraste para selecionar</p></div></div><div class="actions" id="actions"></div><div class="orders"><span><kbd>CLIQUE</kbd> Selecionar</span><span><kbd>DIREITO</kbd> Mover / agir</span><span><kbd>ESPAÇO</kbd> Sua cidadela</span></div></div>
- <div class="footerbar"><span id="connection">◌ Conectando ao servidor</span><span id="objective">OBJETIVO · Elimine os times adversários</span><button id="surrender">Render-se</button></div>
+ <div class="gamebar"><div class="battle-title"><span class="eyebrow">VALE DAS TRÊS PONTES</span><strong id="phase">Preparando a expedição</strong></div><div class="economy"><span title="Ouro">◆ <b id="gold">0</b> <small>OURO</small></span><span title="Madeira">❧ <b id="wood">0</b> <small>MADEIRA</small></span><span title="Unidades, construções e recrutamentos">⚑ <b id="pop">0</b><small> / 65</small></span></div><div id="clock">00:00</div></div>
+ <div class="arena">
+  <canvas id="map" tabindex="0" aria-label="Campo de batalha. Clique ou arraste para selecionar. Clique direito para mover ou agir. Q, W e R ativam habilidades do herói."></canvas>
+  <div class="map-caption"><span class="live-dot"></span> VALE DAS TRÊS PONTES <span>FRONTEIRA ENCANTADA</span></div>
+  <div id="lobby" class="lobby">
+   <div class="eyebrow">ANTES DA BATALHA</div><h2>A companhia se reúne.</h2><p>Escolha como jogar e convide sua equipe.</p>
+   <div class="lobby-settings"><div><label for="mode">Modo de partida</label><select id="mode" aria-describedby="modehint"><option value="ffa">Todos contra todos</option><option value="duos">Duplas · 2 contra 2</option><option value="coop">Amigos contra máquinas</option><option value="duel">Treino · 1 contra 1 máquina</option></select><p id="modehint" class="fine">O anfitrião escolhe o modo.</p></div><div><label for="faction">Sua ordem</label><select id="faction" aria-describedby="factionhint"><option value="mata">Guardiões da Mata</option><option value="mares">Círculo das Águas</option><option value="brasas">Forja das Brasas</option><option value="astros">Vigília dos Astros</option></select><p id="factionhint" class="fine">Cada ordem traz uma vantagem própria.</p></div></div>
+   <div class="invite"><div><small>CÓDIGO DO CONVITE</small><code id="roomcode"></code></div><button id="copy">Copiar convite ↗</button></div>
+   <div id="players"></div><button id="start" class="primary">Iniciar a expedição <span>→</span></button><p class="fine" id="lobbyhint">Aguardando os comandantes.</p>
+  </div>
+  <div id="end" class="lobby end-card" hidden><div class="eyebrow">A FRONTEIRA TEM UMA NOVA HISTÓRIA</div><div class="victory-sigil">✦</div><h2 id="winner"></h2><p>A última equipe com cidadelas em pé vence.</p><button id="again" class="primary">Reunir a companhia novamente <span>→</span></button></div>
+  <div id="buildhint" hidden>Construa ligado à sua cidadela · Verde: local válido · Esc cancela</div>
+  <div id="spellhint" hidden>Escolha o ponto da habilidade · Esc cancela</div>
+ </div>
+ <div class="commanddeck">
+  <div class="selection"><div class="portrait" id="portrait">✦</div><div class="selection-copy"><div class="eyebrow">SUA SELEÇÃO</div><h3 id="selection">Nenhuma unidade</h3><p id="detail">Clique ou arraste para selecionar</p><div id="hero-status"></div></div></div>
+  <div class="actions" id="actions"></div><div class="orders"><span><kbd>CLIQUE</kbd> Selecionar</span><span><kbd>DIREITO</kbd> Mover / agir</span><span><kbd>Q W R</kbd> Habilidades</span><span><kbd>ESPAÇO</kbd> Sua cidadela</span></div>
+ </div>
+ <div class="footerbar"><span id="connection">◌ Conectando à partida</span><span id="objective">PROTEJA SUA CIDADELA. CONQUISTE A FRONTEIRA.</span><button id="surrender">Render-se</button></div>
 </section>
 <div id="toast" role="status" hidden></div>
 <dialog id="instructions">
- <button id="closehelp" class="close" aria-label="Fechar manual">✕</button>
- <div class="eyebrow">MANUAL DO COMANDANTE · 0.2.0</div><h2>Conquiste a fronteira</h2>
- <p>Jogue com mouse e teclado. Cada comandante enfrenta todos os outros.</p>
+ <button id="closehelp" class="close" aria-label="Fechar manual">✕</button><div class="eyebrow">MANUAL DA FRONTEIRA</div><h2>Sua companhia. Sua estratégia.</h2>
+ <p>Um jogo original inspirado em lendas brasileiras. As ordens são fictícias e não representam povos, religiões ou comunidades reais.</p>
  <ol>
-  <li><b>Reúna seus amigos.</b> Crie uma sala e compartilhe o convite. O anfitrião inicia quando todos entrarem (2 a 4 pessoas).</li>
-  <li><b>Selecione e dê ordens.</b> Clique em uma unidade ou arraste uma caixa. Shift adiciona à seleção e duplo clique seleciona o mesmo tipo na tela. Clique direito no chão para mover, em árvore ou cristal para coletar, ou no adversário para atacar. Unidades paradas defendem sua área. Golpes, flechas e magia mostram de onde vem cada ataque.</li>
-  <li><b>Expanda seu território.</b> Selecione a cidadela para criar trabalhadores. Com um trabalhador, construa quartéis, torres ou o Salão dos Heróis. Cada obra precisa estar a até <b>250 passos do trabalhador</b> e <b>300 de uma construção própria pronta, ligada à cidadela</b>. Obras incompletas não ampliam seu alcance. A faixa de <b>360 passos ao redor de uma cidadela inimiga</b> impede construção. O contorno verde indica local válido; o vermelho explica o bloqueio.</li>
-  <li><b>Recrute.</b> No quartel, treine soldados e arqueiros. Cada fila aceita até 5 unidades. O limite de 65 entidades inclui construções e recrutamentos pendentes; são permitidas até 18 construções.</li>
-  <li><b>Escolha seu herói.</b> Construa o <b>Salão dos Heróis</b> e escolha entre seis combatentes originais. A escolha do tipo vale até o fim da partida; você pode ter apenas um herói vivo ou na fila. Se ele cair, recrute o mesmo novamente, começando no nível 1. Cada herói causa <b>25% a mais de dano contra um rival</b>, <b>20% a menos contra outro</b> e dano normal contra os demais. As cartas mostram vantagens, fraquezas e custos.</li>
-  <li><b>Evolua.</b> Selecione uma única construção ou unidade e use <b>Evoluir</b>. Há três níveis, com custos de ouro e madeira e tempo crescente. Evoluções aumentam a vida máxima e, conforme o tipo, ataque, velocidade, coleta ou rapidez de recrutamento. O painel mostra o ganho antes da compra. Para evoluir construções, esvazie a fila. Elas não recrutam durante a evolução. O dano que já sofreram continua descontado da nova vida máxima.</li>
-  <li><b>Vença.</b> Proteja sua cidadela e destrua as demais. Perder a cidadela elimina todo o seu exército.</li>
+  <li><b>Escolha a partida.</b> Jogue todos contra todos, em duplas de 2 contra 2, em companhia de até quatro amigos contra quatro máquinas ou treine sozinho contra uma máquina. O anfitrião organiza a sala; cada comandante escolhe sua ordem.</li>
+  <li><b>Reúna recursos.</b> Selecione trabalhadores e clique com o botão direito em árvores ou cristais. A madeira e o ouro entram diretamente no saldo. Selecione a cidadela para recrutar mais trabalhadores.</li>
+  <li><b>Expanda com cuidado.</b> Construa a até 250 passos do trabalhador e 300 de uma construção própria pronta, ligada à cidadela. Obras incompletas não ampliam o território. Mantenha 360 passos das cidadelas inimigas. A prévia verde indica um local válido; a vermelha explica o bloqueio. Pontes e terrenos bloqueados precisam ficar livres.</li>
+  <li><b>Prepare seu exército.</b> Quartéis recrutam combatentes; a oficina amplia as opções e permite pesquisas. Cada fila aceita até cinco unidades. O limite de 65 inclui unidades, construções e recrutamentos pendentes; cada jogador pode manter até 18 construções.</li>
+  <li><b>Escolha uma lenda.</b> O Salão das Lendas oferece Curupira, Saci, Iara, Cuca, Boitatá e o Guardião do Luar, criação original deste mundo. Escolha um tipo para toda a partida e mantenha apenas um herói vivo ou em treinamento. Se ele cair, recrute o mesmo novamente. As cartas mostram a vantagem e a fraqueza de cada herói.</li>
+  <li><b>Use magia com intenção.</b> Com um herói selecionado, use os botões ou <b>Q, W e R</b>. Habilidades gastam mana e têm tempo de recarga; as que exigem alvo mostram o alcance antes de lançar. O golpe supremo libera no nível heroico 3. Experiência de combate aumenta o nível heroico até 5.</li>
+  <li><b>Equipe e evolua.</b> Compre itens perto de seu Salão das Lendas e use os consumíveis pelo inventário. Evoluções individuais têm três níveis; pesquisas da oficina melhoram sua companhia. Ambos gastam recursos e levam tempo. O painel mostra os custos, benefícios e impedimentos.</li>
+  <li><b>Explore em equipe.</b> Aliados compartilham visão. A névoa oculta adversários fora do alcance de suas unidades. Use as pontes, explore acampamentos e proteja os caminhos de reforço. Ataques e magias ofensivas não ferem aliados.</li>
+  <li><b>Defenda a cidadela.</b> Perdê-la elimina seu exército; sua equipe pode continuar enquanto um aliado mantiver a própria cidadela. A última equipe sobrevivente vence.</li>
  </ol>
- <p><b>Câmera:</b> WASD / setas, arrastar com botão do meio ou mover o mouse até as bordas. Espaço centraliza sua base. X interrompe ordens. Esc ou clique direito cancela a construção.</p>
- <p class="fine">Coleta é creditada diretamente; construções levam 10 s. Sem névoa de guerra, alianças ou obstáculos físicos nesta versão. Salas ficam na memória do servidor.</p>
+ <div class="manual-controls"><b>Controles</b><p>WASD ou setas movem a câmera; arraste com o botão do meio ou use as bordas. A roda ajusta o zoom. Espaço centraliza a cidadela. Shift adiciona à seleção. Duplo clique seleciona unidades do mesmo tipo. X interrompe ordens; Esc cancela o alvo ou a construção. Q/W/R usam habilidades quando um herói está selecionado; nesse caso, use as setas para mover a câmera. F1 seleciona seu herói; 1, 2 e 3 usam itens. Ctrl + 4 a 9 salva grupos; 4 a 9 os seleciona. A prepara uma ordem de avançar atacando. Com uma construção de recrutamento selecionada, clique direito define o ponto de encontro das novas unidades.</p></div>
+ <p class="fine">O som é opcional. As partidas ficam na memória do servidor e terminam se ele reiniciar. Os personagens são interpretações de fantasia para este jogo, não descrições de crenças ou pessoas reais.</p>
 </dialog>
-<footer id="sitefooter"><span>◈ ARTE DA GUERRA</span><span>O reencontro começa no campo de batalha.</span><span>UM MUNDO ORIGINAL · 2026</span></footer>
-</main><script src="/client.js" type="module"></script></body></html>
-
-
+<footer id="sitefooter"><span>✦ LENDAS DA FRONTEIRA</span><span>Um mundo para construir histórias entre amigos.</span><span>ARTE DA GUERRA · 2026</span></footer>
+</main><script src="/client.js" type="module"></script>
+</body></html>
