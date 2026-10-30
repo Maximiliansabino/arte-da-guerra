@@ -58,7 +58,7 @@ function updateUI(){const p=mine();if(!p)return;$('#gold').textContent=Math.floo
  $('#start').disabled=!host||state.players.length<2||new Set(state.players.map(p=>p.team)).size<2;
  $('#lobbyhint').textContent=host?'Mesmo time = aliados. Times diferentes = inimigos. Preencha vagas com máquinas ou aguarde seus amigos. São necessários dois times.':'O anfitrião escolhe os times e as máquinas antes de iniciar.';
  if(state.phase==='finished'){
-  const winners=state.players.filter(p=>!p.defeated&&p.team===state.winningTeam);
+  const winners=state.players.filter(p=>p.team===state.winningTeam);
   $('#winner').textContent=state.winner?(winners.length>1?`Time ${state.winningTeam+1} venceu: ${winners.map(p=>p.name).join(', ')}`:`${winners[0]?.name||'Comandante'} venceu!`):'Empate na fronteira';
  }
  selected=new Set([...selected].filter(id=>state.entities.some(e=>e.id===id)));
@@ -232,7 +232,7 @@ canvas.onpointerleave=()=>{pointer=null;};canvas.onpointercancel=()=>{drag=null;
 canvas.onpointerup=e=>{if(!drag)return;if(drag.pan){drag=null;return;}const {from,to,shift}=drag;if(!shift)selected.clear();if(Math.hypot(from.x-to.x,from.y-to.y)<6){const t=entityAt(world(to));if(t)selected.add(t.id);}else{const a=world(from),b=world(to);for(const t of state?.entities||[])if(t.owner===session?.id&&!BUILDING_TYPES.includes(t.type)&&t.x>=Math.min(a.x,b.x)&&t.x<=Math.max(a.x,b.x)&&t.y>=Math.min(a.y,b.y)&&t.y<=Math.max(a.y,b.y))selected.add(t.id);}drag=null;refreshActions();};
 canvas.ondblclick=e=>{const unit=entityAt(world(local(e)));if(unit?.owner!==session?.id)return;selected=new Set(state.entities.filter(t=>t.type===unit.type&&t.owner===unit.owner&&Math.abs(t.x-camera.x)<cw/2/zoom&&Math.abs(t.y-camera.y)<ch/2/zoom).map(t=>t.id));refreshActions();};
 canvas.onwheel=e=>{e.preventDefault();zoom=Math.max(.35,Math.min(1.25,zoom*(e.deltaY>0?.9:1.1)));};
-window.onkeydown=e=>{if(['INPUT','TEXTAREA'].includes(e.target.tagName)||$('#instructions').open)return;if([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault();keys.add(e.key.toLowerCase());if(e.key===' ')home();if(e.key==='Escape')setBuild(null);if(e.key.toLowerCase()==='x'&&!e.ctrlKey&&!e.metaKey)send({type:'stop'});};window.onkeyup=e=>keys.delete(e.key.toLowerCase());window.onblur=()=>keys.clear();
+window.onkeydown=e=>{if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)||$('#instructions').open)return;if([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault();keys.add(e.key.toLowerCase());if(e.key===' ')home();if(e.key==='Escape')setBuild(null);if(e.key.toLowerCase()==='x'&&!e.ctrlKey&&!e.metaKey)send({type:'stop'});};window.onkeyup=e=>keys.delete(e.key.toLowerCase());window.onblur=()=>keys.clear();
 function hash(n){const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(v);}
 function polygon(points,fill,stroke){ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.stroke();}}
 function ellipse(x,y,rx,ry,fill){ctx.beginPath();ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();}
