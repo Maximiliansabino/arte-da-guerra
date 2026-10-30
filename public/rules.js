@@ -1,4 +1,5 @@
 import {terrainBlocked} from './terrain.js';
+import {FACTIONS, HERO_ABILITIES, ITEMS} from './legends.js';
 // Shared presentation data and deterministic rules. Only the server applies them.
 export const WORLD = 1800;
 export const MAX_LEVEL = 3;
@@ -8,17 +9,17 @@ export const BUILD_RULES = {
 };
 export const HERO_TYPES = ['bastion', 'shade', 'ranger', 'storm', 'ember', 'warden'];
 export const HEROES = {
-  bastion: {name: 'Bastião', icon: '⛨', color: '#e4c578', description: 'Defensor resistente; combate corpo a corpo.', strongAgainst: 'shade', weakAgainst: 'warden'},
-  shade: {name: 'Vulto', icon: '☾', color: '#c6a3e8', description: 'Duelista veloz; golpes rápidos de perto.', strongAgainst: 'ranger', weakAgainst: 'bastion'},
-  ranger: {name: 'Batedora', icon: '➶', color: '#a6d88c', description: 'Arqueira ágil; maior alcance e pouca vida.', strongAgainst: 'storm', weakAgainst: 'shade'},
-  storm: {name: 'Tempestade', icon: 'ϟ', color: '#90d9ed', description: 'Conjurador; disparos fortes a distância.', strongAgainst: 'ember', weakAgainst: 'ranger'},
-  ember: {name: 'Brasa', icon: '♨', color: '#f2a073', description: 'Combatente de assalto; dano alto de perto.', strongAgainst: 'warden', weakAgainst: 'storm'},
-  warden: {name: 'Vigília', icon: '✦', color: '#dbdca5', description: 'Guardião de alcance curto; vida e ataque constantes.', strongAgainst: 'bastion', weakAgainst: 'ember'}
+  bastion:{name:'Curupira',icon:'❧',color:'#8fe09a',description:'Guardião dos caminhos; raízes e proteção da floresta.',strongAgainst:'shade',weakAgainst:'warden',abilities:HERO_ABILITIES.bastion},
+  shade:{name:'Saci',icon:'↻',color:'#d6b2ef',description:'Mestre dos ventos; mobilidade e redemoinhos.',strongAgainst:'ranger',weakAgainst:'bastion',abilities:HERO_ABILITIES.shade},
+  ranger:{name:'Iara',icon:'≈',color:'#70e6ed',description:'Guardiã das águas; ondas e fontes restauradoras.',strongAgainst:'storm',weakAgainst:'shade',abilities:HERO_ABILITIES.ranger},
+  storm:{name:'Cuca',icon:'☾',color:'#c5a1ed',description:'Feiticeira dos sonhos; bruma e lanternas encantadas.',strongAgainst:'ember',weakAgainst:'ranger',abilities:HERO_ABILITIES.storm},
+  ember:{name:'Boitatá',icon:'♨',color:'#ffac55',description:'Serpente de luz; fogo protetor e espirais ardentes.',strongAgainst:'warden',weakAgainst:'storm',abilities:HERO_ABILITIES.ember},
+  warden:{name:'Guardião do Luar',icon:'✦',color:'#d4d5ff',description:'Herói original; estrelas, cura e círculos lunares.',strongAgainst:'bastion',weakAgainst:'ember',abilities:HERO_ABILITIES.warden}
 };
-export const BUILDING_TYPES = ['base', 'barracks', 'tower', 'hall'];
+export const BUILDING_TYPES = ['base', 'barracks', 'tower', 'hall', 'workshop'];
 export const COST = {
   worker: [50, 0], soldier: [70, 25], archer: [85, 40],
-  barracks: [140, 100], tower: [100, 80], hall: [180, 140],
+  barracks: [140, 100], tower: [100, 80], hall: [180, 140], workshop:[200,160], healer:[100,65], siege:[180,120],
   ...Object.fromEntries(HERO_TYPES.map(type => [type, [220, 140]]))
 };
 export const STATS = {
@@ -26,6 +27,9 @@ export const STATS = {
   worker: {hp: 90, speed: 85, damage: 4, range: 23, cooldown: 1, gather: 7, attackKind: 'melee'},
   soldier: {hp: 230, speed: 95, damage: 19, range: 27, cooldown: .8, attackKind: 'melee'},
   archer: {hp: 125, speed: 100, damage: 14, range: 150, cooldown: 1, attackKind: 'arrow'},
+  healer:{hp:160,speed:90,damage:7,range:120,cooldown:1.3,attackKind:'bolt',heal:18},
+  siege:{hp:400,speed:60,damage:45,range:220,cooldown:2,attackKind:'bolt',siege:true},
+  workshop:{hp:850,building:true},
   base: {hp: 1800, building: true},
   barracks: {hp: 750, building: true},
   tower: {hp: 550, building: true, damage: 23, range: 200, cooldown: 1.1, attackKind: 'arrow'},
@@ -39,11 +43,11 @@ export const STATS = {
 };
 export const LABELS = {
   guardian: 'Guardião neutro', worker: 'Trabalhador', soldier: 'Soldado', archer: 'Arqueiro', base: 'Cidadela',
-  barracks: 'Quartel', tower: 'Torre', hall: 'Salão dos Heróis',
+  barracks: 'Quartel', tower: 'Torre', hall: 'Salão das Lendas', workshop:'Oficina Encantada', healer:'Cuidador das Fontes', siege:'Aríete de Luz',
   ...Object.fromEntries(HERO_TYPES.map(type => [type, HEROES[type].name]))
 };
 export const ICONS = {
-  worker: '⚒', soldier: '⚔', archer: '➶', base: '♜', barracks: '⚑', tower: '♖', hall: '✦',
+  worker: '⚒', soldier: '⚔', archer: '➶', base: '♜', barracks: '⚑', tower: '♖', hall: '✦', workshop:'⚒', healer:'✚', siege:'◈', guardian:'◆',
   ...Object.fromEntries(HERO_TYPES.map(type => [type, HEROES[type].icon]))
 };
 
@@ -51,16 +55,23 @@ export function entityStats(entity) {
   const base = STATS[entity.type];
   if (!base) throw Error('Tipo de entidade inválido.');
   const tier = Math.max(0, Math.min(MAX_LEVEL - 1, (entity.level || 1) - 1));
-  const stats = {...base, hp: Math.round(base.hp * (1 + .35 * tier))};
-  if (base.damage) stats.damage = Math.round(base.damage * (1 + .25 * tier));
+  const heroic = base.hero ? Math.max(0, Math.min(4, (entity.heroLevel || 1)-1)) : 0;
+  const stats = {...base, hp: Math.round(base.hp * (1 + .35 * tier + .1 * heroic))};
+  if (base.damage) stats.damage = Math.round(base.damage * (1 + .25 * tier + .08 * heroic));
   if (base.speed) stats.speed = base.speed * (1 + .05 * tier);
   if (base.gather) stats.gather = base.gather * (1 + .25 * tier);
+  const faction=FACTIONS[entity.faction];
+  if(stats.damage) stats.damage=Math.round(stats.damage*(1+(faction?.damageBonus||0)+.1*(entity.research?.weapons||0)))+(entity.inventory?.includes('charm')?ITEMS.charm.damage:0);
+  stats.armor=.08*(entity.research?.armor||0);
+  if(stats.gather)stats.gather*=1+.15*(entity.research?.harvest||0);
+  if(base.hero){stats.maxMana=150+heroic*20;stats.manaRegen=3*(1+(faction?.manaBonus||0));}
+  stats.sight=(base.building?330:base.hero?320:250)*(1+(faction?.sightBonus||0));
   return stats;
 }
 
 const UPGRADE_COST = {
   base: [240, 180], barracks: [180, 140], tower: [160, 120], hall: [240, 180],
-  worker: [80, 40], soldier: [110, 70], archer: [120, 80]
+  worker: [80, 40], soldier: [110, 70], archer: [120, 80], healer:[130,90], siege:[180,140], workshop:[220,160], guardian:[0,0]
 };
 export function upgradeCost(entity) {
   const cost = STATS[entity.type]?.hero ? [260, 180] : UPGRADE_COST[entity.type];
@@ -72,7 +83,7 @@ export function upgradeDuration(entity) {
   return seconds * (1 + .5 * ((entity.level || 1) - 1));
 }
 export function trainDuration(unit, building) {
-  const seconds = unit === 'worker' ? 5 : STATS[unit]?.hero ? 14 : 8;
+  const seconds = unit === 'worker' ? 5 : STATS[unit]?.hero ? 14 : unit==='siege'?13:unit==='healer'?10:8;
   return seconds * (1 - .15 * ((building.level || 1) - 1));
 }
 export function heroMultiplier(attackerType, targetType) {

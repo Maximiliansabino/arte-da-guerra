@@ -159,3 +159,11 @@ test('efeitos: dados incompletos ou não finitos não chegam ao Canvas', () => {
   assert.deepEqual(effects.events.map(event => event.id), [6]);
   effects.draw(recordingContext(), 1400);
 });
+
+test('efeitos: escudo que absorve todo o dano continua visível e dano negativo é rejeitado', () => {
+  const effects = new CombatEffects();
+  effects.ingest(snapshot([{...hit(1), damage:0, blocked:true}, {...hit(2),damage:-1}]),1000);
+  assert.deepEqual(effects.events.map(event=>event.id),[1]);
+  const ctx=recordingContext(); effects.draw(ctx,1400);
+  assert.ok(ctx.calls.some(call=>call.name==='fillText' && call.text==='escudo'));
+});

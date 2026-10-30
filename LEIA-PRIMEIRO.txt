@@ -1,4 +1,4 @@
-ARTE DA GUERRA - PROTOTIPO JOGAVEL 0.2.0
+ARTE DA GUERRA - LENDAS DA FRONTEIRA 0.4.0
 
 Este download inclui o jogo e o servidor local. Ainda nao e um instalador .exe.
 Requer Node.js 22 ou superior: https://nodejs.org/
@@ -8,17 +8,20 @@ WINDOWS
 2. Instale o Node.js, caso ainda nao esteja instalado.
 3. Abra INICIAR-JOGO.cmd com dois cliques.
 4. Quando aparecer a mensagem do servidor, abra http://localhost:3000
-5. Escolha treinar contra os guardioes ou criar uma sala privada.
+5. Escolha treinar contra uma maquina ou criar uma sala com amigos.
+6. No salao, escolha duplas, todos contra todos ou ate 4 amigos contra 4 maquinas.
 
 OUTROS SISTEMAS
 Abra um terminal nesta pasta e execute: npm start
 Depois abra http://localhost:3000 no navegador.
-O codigo e portavel, mas somente a execucao no Windows foi verificada.
+O servidor e os testes desta versao foram executados em Linux.
+O iniciador Windows foi preservado; confira a instalacao do Node.js no seu PC.
 
 JOGAR COM AMIGOS
 So o anfitriao precisa executar o servidor e ter Node.js.
 Os convidados acessam o endereco dele pelo navegador.
-Na mesma rede: http://IP-LOCAL-DO-ANFITRIAO:3000
+Na mesma rede: configure ALLOWED_HOSTS e abra http://IP-LOCAL-DO-ANFITRIAO:3000
+Veja o exemplo de configuracao no README.md.
 Em redes diferentes: e preciso configurar um tunel ou hospedagem externa.
 O convite localhost NAO funciona em outro computador.
 O download, por si so, nao cria um servidor publico na internet.

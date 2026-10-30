@@ -4,6 +4,11 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {MAP} from '../public/terrain.js';
 import * as rules from '../public/rules.js';
+import * as legends from '../public/legends.js';
+import * as matchConfig from '../public/match-config.js';
+import {createSceneArt} from '../public/scene-art.js';
+import {createSpellEffects} from '../public/spell-effects.js';
+import {createAudio} from '../public/audio.js';
 import {createCombatEffects} from '../public/combat-effects.js';
 
 // Exercise the shipped client and its real event handlers without browser or
@@ -41,12 +46,12 @@ class Element {
 }
 function entity(id, type, owner = 'p1', x = 400, y = 220) {
   return {id, type, owner, x, y, hp: rules.STATS[type].hp,
-    maxHp: rules.STATS[type].hp, level: 1, cd: 0, queue: [], progress: 0, order: null};
+    maxHp: rules.STATS[type].hp, level: 1, cd: 0, queue: [], progress: 0, order: null, ...(rules.STATS[type].hero ? {heroLevel:1,xp:0,mana:150,maxMana:150,cooldowns:{},inventory:[]} : {})};
 }
 function fixture() {
-  return {code: 'test-room', phase: 'playing', tick: 10, time: 1, combatEvents: [], resources: [], players: [
-    {id: 'p1', slot: 0, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
-    {id: 'p2', slot: 1, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
+  return {code: 'test-room', mode:'ffa', phase: 'playing', tick: 10, time: 1, combatEvents: [], spellEvents: [], resources: [], players: [
+    {id: 'p1', slot: 0, team:0, faction:'mata', research:{weapons:0,armor:0,harvest:0}, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
+    {id: 'p2', slot: 1, team:1, faction:'mares', research:{weapons:0,armor:0,harvest:0}, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
   ], entities: [entity(1, 'base', 'p1', 220, 220), entity(2, 'hall'),
     entity(3, 'worker', 'p1', 300, 350), entity(4, 'base', 'p2', 1580, 1580)]};
 }
@@ -59,13 +64,13 @@ function harness(initial = fixture()) {
     if (name in target) return target[name];
     return (...args) => {
       for (const arg of args.flat()) if (typeof arg === 'number') assert.ok(Number.isFinite(arg), `${String(name)} received ${arg}`);
-      calls.push({name, args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle});
+      calls.push({name, args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, lineWidth:target.lineWidth});
     };
   }});
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    ...rules, MAP, createCombatEffects, performance: {now: () => 1000}, devicePixelRatio: 1,
+    ...rules, ...legends, ...matchConfig, MAP, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
     TextDecoder, AbortController, console,
@@ -169,7 +174,7 @@ test('cliente: salão usa hitbox de prédio e seis heróis, níveis e evoluçõe
   h.initial.entities[1].upgrade = {level: 2, duration: 16, remaining: 8};
   h.run('render(1016)');
   const text = h.calls.filter(call => call.name === 'fillText').map(call => call.args[0]);
-  for (const hero of Object.values(rules.HEROES)) assert.ok(text.includes(hero.name));
+  for (const hero of Object.values(rules.HEROES)) assert.ok(text.includes(`${hero.name} · 1`), `hero label must show ${hero.name} and its heroic level`);
   assert.ok(text.includes('III'));
   assert.ok(h.calls.some(call => call.name === 'fillRect' && call.fillStyle === '#e8c272'));
 });
@@ -201,4 +206,142 @@ test('cliente: iniciar aguarda a confirmação da última troca de time',async()
  const starting=h.elements.get('#start').onclick();await Promise.resolve();await Promise.resolve();
  assert.equal(urls.length,1);assert.ok(urls[0].includes('/lobby'));assert.equal(h.elements.get('#start').disabled,true);
  release();await changing;await starting;assert.equal(urls.length,2);assert.ok(urls[1].includes('/start'));
+});
+
+const actionsWith = (h, className) => h.actions().filter(button => button.classList.contains(className));
+const press = (h, key, extra = {}) => h.sandbox.window.onkeydown({key, target: {tagName:'CANVAS'}, preventDefault() {}, ...extra});
+
+test('cliente: treino cria sala, configura 1 contra 1 e só então inicia', async () => {
+  const h = harness(), posts = [];
+  h.run('session = null');
+  h.elements.get('#name').value = 'Comandante de treino';
+  h.sandbox.fetch = async (url, options) => {
+    if (url.includes('/events')) return {ok:false};
+    posts.push({url, body:JSON.parse(options.body), authorization:options.headers.Authorization});
+    return {ok:true, json:async()=>url === '/api/create' ? {id:'p1',code:'solo',token:'solo-token'} : {ok:true}};
+  };
+  await h.elements.get('#practice').onclick();
+  assert.deepEqual(posts.map(post=>post.url), ['/api/create','/api/lobby?room=solo','/api/start?room=solo']);
+  assert.equal(posts[0].body.name, 'Comandante de treino');
+  assert.deepEqual(posts[1].body, {action:'mode',mode:'duel'});
+  assert.equal(posts[1].authorization, 'Bearer solo-token');
+  assert.equal(h.elements.get('#welcome').hidden, true);
+  assert.equal(h.elements.get('#game').hidden, false);
+});
+
+test('cliente: cooperativo mostra quatro amigos e quatro máquinas e limita controles ao anfitrião', async () => {
+  const initial=fixture(); initial.phase='lobby'; initial.mode='coop'; initial.maxPlayers=8;
+  initial.players=Array.from({length:4},(_,slot)=>({...initial.players[0],id:`p${slot+1}`,slot,team:0,name:`Amigo ${slot+1}`}));
+  const h=harness(initial); h.run('updateUI()');
+  const roster=h.elements.get('#players');
+  assert.equal(roster.children.length,8);
+  assert.equal(roster.children.filter(row=>row.textContent.includes('Jogador')).length,4);
+  assert.equal(roster.children.filter(row=>row.textContent.includes('Máquina ao iniciar')).length,4);
+  assert.ok(roster.children.slice(0,4).every(row=>row.children.find(child=>child.tagName==='SELECT').disabled));
+  assert.equal(h.elements.get('#mode').children.length,4);
+  assert.equal(h.elements.get('#faction').children.length,4);
+  assert.equal(h.elements.get('#mode').disabled,false);
+  assert.equal(h.elements.get('#start').disabled,false);
+  h.run("session.id='p2'; updateUI()");
+  assert.equal(h.elements.get('#mode').disabled,true);
+  assert.equal(h.elements.get('#start').disabled,true);
+  assert.equal(h.elements.get('#faction').disabled,false,'each friend controls their own order');
+  h.elements.get('#faction').value='astros';
+  await h.elements.get('#faction').onchange();
+  assert.deepEqual(h.requests.at(-1).body,{action:'faction',slot:1,faction:'astros'});
+  h.initial.phase='playing'; h.run('updateUI()');
+  assert.equal(h.elements.get('#faction').disabled,true);
+});
+
+test('cliente: Q/W/R usam alvo, alcance, mana, recarga e nível heroico', async () => {
+  const h=harness(), hero=entity(10,'bastion'); h.initial.entities.push(hero); h.select(10);
+  assert.equal(actionsWith(h,'skill-action').length,3);
+  assert.equal(actionsWith(h,'ultimate-action')[0].disabled,true);
+  press(h,'r'); assert.equal(h.run('spellTarget'),null);
+  assert.equal(h.requests.length,0);
+  press(h,'q'); assert.equal(h.run('spellTarget.ability'),'roots');
+  h.run('camera={x:900,y:220};zoom=1');
+  await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});
+  assert.equal(h.requests.length,0,'out of range click sends no request');
+  assert.equal(h.run('spellTarget.ability'),'roots','invalid target remains armed');
+  assert.ok(h.run('targetError({x:NaN,y:220})'));
+  h.run('camera={x:500,y:220}');
+  await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});
+  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'cast',ability:'roots',x:500,y:220});
+  assert.equal(h.run('spellTarget'),null);
+  hero.cooldowns.roots=4.2; h.run('refreshActions()');
+  assert.equal(actionsWith(h,'skill-action')[0].disabled,true);
+  press(h,'q'); assert.equal(h.requests.length,1); assert.equal(h.run('spellTarget'),null);
+  hero.mana=0; h.run('refreshActions()');
+  assert.ok(actionsWith(h,'skill-action').every(button=>button.disabled));
+  press(h,'w'); assert.equal(h.requests.length,1);
+  hero.mana=150; hero.heroLevel=3; h.run('refreshActions()');
+  assert.equal(actionsWith(h,'ultimate-action')[0].disabled,false);
+  press(h,'w'); await Promise.resolve();
+  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'cast',ability:'bark',x:400,y:220});
+  press(h,'r'); assert.equal(h.run('spellTarget.ability'),'forest');
+  press(h,'Escape'); assert.equal(h.run('spellTarget'),null);
+  assert.match(h.elements.get('#hero-status').textContent,/Lenda 3\/5 · Mana 150\/150/);
+});
+
+test('cliente: mercado e inventário enviam item e espaço corretos e atualizam bloqueios', async () => {
+  const h=harness(), hero=entity(10,'bastion'); h.initial.entities.push(hero); h.select(10);
+  assert.equal(actionsWith(h,'inventory-action').length,3);
+  assert.ok(actionsWith(h,'inventory-action').every(button=>button.disabled));
+  assert.ok(actionsWith(h,'shop-action').every(button=>!button.disabled));
+  await actionsWith(h,'shop-action')[0].onclick();
+  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'buyItem',item:'potion'});
+  hero.inventory=['potion','mana','charm']; hero.hp-=50; hero.mana-=50; h.run('refreshActions()');
+  assert.ok(actionsWith(h,'shop-action').every(button=>button.disabled));
+  assert.deepEqual(actionsWith(h,'inventory-action').map(button=>button.disabled),[false,false,true]);
+  await actionsWith(h,'inventory-action')[0].onclick();
+  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'useItem',slot:0});
+  press(h,'2'); await Promise.resolve();
+  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'useItem',slot:1});
+  hero.hp=hero.maxHp; hero.mana=hero.maxMana; hero.inventory=['charm']; h.run('refreshActions()');
+  assert.equal(actionsWith(h,'shop-action')[2].disabled,true,'duplicate talisman disabled');
+  hero.inventory=[]; h.initial.entities[1].upgrade={remaining:5}; h.run('refreshActions()');
+  assert.ok(actionsWith(h,'shop-action').every(button=>button.disabled),'upgrading hall is unavailable');
+  h.initial.entities[1].upgrade=null; hero.x=1000; h.run('refreshActions()');
+  assert.ok(actionsWith(h,'shop-action').every(button=>button.disabled),'market requires own nearby hall');
+});
+
+test('cliente: pesquisa mostra tempo do próximo nível e impede duplicação em outra oficina', async () => {
+  const h=harness(), workshop=entity(10,'workshop'), other=entity(11,'workshop');
+  h.initial.entities.push(workshop,other); h.initial.players[0].research.weapons=1; h.select(10);
+  let buttons=actionsWith(h,'research-action');
+  assert.equal(buttons.length,3);
+  assert.match(buttons[0].textContent,/440.*280.*44 s/);
+  await buttons[0].onclick();
+  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'research',research:'weapons'});
+  other.researchJob={id:'weapons',remaining:44,duration:44}; h.run('refreshActions()');
+  buttons=actionsWith(h,'research-action');
+  assert.equal(buttons[0].disabled,true);
+  assert.equal(buttons[1].disabled,false);
+  workshop.researchJob={id:'armor',remaining:20,duration:22}; h.run('refreshActions()');
+  assert.ok(actionsWith(h,'research-action').every(button=>button.disabled));
+  assert.equal(upgradeButton(h).disabled,true);
+  workshop.researchJob=null; other.researchJob=null; h.initial.players[0].research.weapons=2; h.run('refreshActions()');
+  assert.equal(actionsWith(h,'research-action')[0].disabled,true);
+});
+
+test('cliente: avanço e ponto de encontro enviam destinos pela interação do mapa', async () => {
+  const h=harness(); h.select(3); press(h,'a');
+  h.run('camera={x:600,y:500};zoom=1');
+  await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});
+  assert.deepEqual(h.requests.at(-1).body,{ids:[3],type:'attackMove',x:600,y:500});
+  assert.equal(h.run('attackTarget'),false);
+  h.select(2);
+  await h.elements.get('#map').onpointerdown({button:2,clientX:500,clientY:300});
+  assert.deepEqual(h.requests.at(-1).body,{ids:[2],type:'rally',x:600,y:500});
+});
+
+test('cliente: cristais mantêm contorno fino mesmo após desenhar trilhas largas sem terreno', () => {
+  const h=harness(); h.calls.length=0;
+  h.run('ctx.lineWidth=90;crystal(400,300)');
+  const outlines=h.calls.filter(call=>call.name==='stroke');
+  assert.equal(outlines.length,2);
+  assert.ok(outlines.every(call=>call.lineWidth>0 && call.lineWidth<=3));
+  assert.equal(h.calls[0].name,'save');
+  assert.equal(h.calls.at(-1).name,'restore');
 });

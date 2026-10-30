@@ -1,0 +1,32 @@
+ARTE DA GUERRA: LENDAS DA FRONTEIRA — ARTE ORIGINAL
+
+Imagens geradas por IA com o gerador de imagens integrado do ChatGPT, em 30/10/2026.
+Destinadas ao jogo original. Não usam arquivos de Warcraft nem de adaptações televisivas.
+São releituras de fantasia; não representam povos, comunidades ou crenças religiosas reais.
+
+hero-atlas.png: PNG RGBA, 1536 × 1024; atlas 3 colunas × 2 linhas, células 512 × 512.
+Ordem: Curupira, Saci, Iara, Cuca, Boitatá, Guardião do Luar.
+A transparência está no canal alfa original; o RGB das áreas transparentes contém cores,
+mas os navegadores renderizam o alfa. Não remover o alfa ao converter o arquivo.
+Guardião do Luar é criação ficcional original, não uma entidade tradicional.
+
+fronteira-keyart.png: imagem de abertura com cenário e personagens.
+
+PROMPT DO ATLAS
+Use case: stylized-concept. Asset type: production sprite atlas for an original Brazilian folklore fantasy RTS. Create exactly SIX isolated FULL-BODY character illustrations in a perfectly even 3-column x 2-row grid on a genuinely transparent background, landscape 1536x1024 canvas if possible. Each cell has identical dimensions, one centered character fully contained in its cell with generous transparent gutters; no character, particles or weapon may cross the cell boundary. NO labels, letters, text, borders, frames, floor tiles, ground shadows or background. High-quality stylized hand-painted fantasy game art, readable bold silhouettes, clean outlines, three-quarter front view, subtle top-left light, detailed materials but readable at small scale. Similar scale and baseline across cells. These are original adaptations of folklore, not existing game or TV characters.
+
+EXACT ORDER, left-to-right top-to-bottom:
+1) Curupira: adult forest guardian with warm brown skin and fiery red-orange mane, composed courageous expression, fantastical leaf-and-bark armor and green root gauntlets, no ethnic costume or headdress, natural dignified proportions, reverse-oriented feet as a mythic detail if visible.
+2) Saci: confident adult Black male wind hero, ONE natural leg only, clear dignified one-legged silhouette balanced in a small swirl of wind, red soft cap, red scarf, practical dark earth-tone fantasy tunic and trousers on his single leg, no pipe, no exaggerated features, no caricature, no prosthetic second leg, playful courageous expression.
+3) Iara: dignified adult water mage, fully clothed in elegant teal scale-pattern armor and flowing translucent water cape, long dark hair, turquoise magic focus, subtle aquatic fins, powerful and nonsexualized, no real cultural or religious regalia.
+4) Cuca: original anthropomorphic crocodilian alchemist, crocodile head and tail, rich violet moss-lined cloak and leather potion satchel, calm intelligent face, purple alchemical vapour held in hand, no yellow wig or any television adaptation likeness.
+5) Boitatá: NONHUMAN guardian fire serpent, coiled upward compact silhouette with a luminous amber face and emerald flame eyes, flowing golden ember body and curling flames, beautiful protective mythical creature, no humanoid limbs.
+6) Guardião do Luar: wholly fictional moonlight knight in dark indigo and pale silver armor, abstract crescent visor and star-speckled cloak, luminous small moon shield, no religious symbols.
+
+Art direction: heroic and respectful, every figure visually distinct, emerald/gold/teal/violet/ember/indigo palette. Avoid Warcraft assets, World of Warcraft visual designs, trademarked characters, stereotypical Indigenous accessories, real-world tribal identities, religious iconography, sexualization, grotesque stereotypes. All six figures complete and separated, equal clear margin. Transparent alpha outside the character shapes, not checkerboard texture.
+
+PROMPT DA IMAGEM DE ABERTURA
+Use case: stylized-concept. Asset type: wide launch-screen key art for original Brazilian folklore fantasy strategy game. Paint a sophisticated cinematic fantasy landscape with a lush Brazilian tropical forest, a broad turquoise river with distant stone bridges, tall lush canopy, warm golden mist at dusk, distant rock formations, subtle constellation sparks high in the sky. Emerald, aged brass gold, turquoise, violet and ember accents. Detailed painterly fantasy realism with rich natural materials, dramatic but hopeful and inviting mood.
+
+Wide landscape composition around 1536x1024 or 1792x1024. Keep the LEFT 45% as dark emerald forest and soft atmospheric river negative space without figures or bright focal points, suitable for overlay of interface title. On the RIGHT 55%, six original heroic figures stand together facing the valley, rendered beautifully but leaving room for composition. They are dignified interpretations of Brazilian folklore, with no reference to existing video games or television adaptations:
+adult fiery-haired Curupira in leafy bark armor; confident adult Black one-legged Saci in red cap and practical fantasy clothes carried by wind; fully clothed Iara in elegant aquatic teal armor and water cape; original crocodilian Cuca alchemist in violet moss-lined cloak; luminous coiled fire serpent Boitatá; wholly fictional silver-and-indigo Guardião do Luar with crescent visor and star cloak. No caricature, no stereotypes, no ethnic headdresses, no real religious iconography, no sexualization. Original fantasy realm and original designs, never recognizable Warcraft or TV versions. No words, logos, frames, lettering or watermark. High quality premium game concept illustration, cohesive light and believable anatomy.
