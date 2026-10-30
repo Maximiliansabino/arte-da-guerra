@@ -192,3 +192,13 @@ test('cliente: snapshot SSE alimenta efeitos uma vez, mesmo com alvo já elimina
   h.run('render(1300)');
   assert.ok(h.calls.some(call => call.name === 'fillText' && call.args[0] === '−14'));
 });
+
+test('cliente: iniciar aguarda a confirmação da última troca de time',async()=>{
+ const initial=fixture();initial.phase='lobby';initial.players[0].team=0;initial.players[1].team=1;
+ const h=harness(initial),urls=[];let release;
+ h.sandbox.fetch=async url=>{urls.push(url);if(url.includes('/lobby'))await new Promise(resolve=>{release=resolve;});return {ok:true,json:async()=>({ok:true})};};
+ const changing=h.run("lobbyAction({action:'team',slot:1,team:0})");
+ const starting=h.elements.get('#start').onclick();await Promise.resolve();await Promise.resolve();
+ assert.equal(urls.length,1);assert.ok(urls[0].includes('/lobby'));assert.equal(h.elements.get('#start').disabled,true);
+ release();await changing;await starting;assert.equal(urls.length,2);assert.ok(urls[1].includes('/start'));
+});
