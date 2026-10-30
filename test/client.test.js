@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
+import {MAP} from '../public/terrain.js';
 import * as rules from '../public/rules.js';
 import {createCombatEffects} from '../public/combat-effects.js';
 
@@ -32,6 +33,7 @@ class Element {
   append(...elements) {this.children.push(...elements);}
   replaceChildren(...elements) {this.text = ''; this.children = [...elements];}
   getBoundingClientRect() {return {left: 0, top: 0, width: 1000, height: 600};}
+  setAttribute(name,value) {this[name]=value;}
   focus() {}
   setPointerCapture() {}
   showModal() {this.open = true;}
@@ -63,7 +65,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    ...rules, createCombatEffects, performance: {now: () => 1000}, devicePixelRatio: 1,
+    ...rules, MAP, createCombatEffects, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
     TextDecoder, AbortController, console,

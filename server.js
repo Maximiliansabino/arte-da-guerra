@@ -1,7 +1,7 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
-import {room,addPlayer,start,command,step,snapshot} from './game.js';
+import {room,addPlayer,start,command,step,snapshot,configureLobby} from './game.js';
 const rooms=new Map(),streams=new Map(),limits=new Map(),connections=new Map();
 // Hosts explícitos impedem que um domínio externo seja usado para acessar o servidor local.
 const publicHosts=new Set([process.env.RENDER_EXTERNAL_HOSTNAME,...(process.env.ALLOWED_HOSTS||'').split(',')].filter(Boolean).map(h=>h.trim().toLowerCase()));
@@ -36,27 +36,28 @@ export const server=http.createServer(async(req,res)=>{
   if(process.env.NODE_ENV==='production')res.setHeader('Strict-Transport-Security','max-age=31536000');
   if(req.method==='GET'&&url.pathname==='/health')return json(res,200,{ok:true});
   if(req.method==='POST'){
-   if(!['/api/create','/api/join','/api/start','/api/command'].includes(url.pathname))return json(res,404,{error:'Não encontrado.'});
+   if(!['/api/create','/api/join','/api/start','/api/command','/api/lobby'].includes(url.pathname))return json(res,404,{error:'Não encontrado.'});
    // Limitar antes de ler o corpo reduz o custo de pedidos não autenticados.
    let session;
    if(url.pathname==='/api/create')rate(`create:${ip}`,6,60000);
    else if(url.pathname==='/api/join')rate(`join:${ip}`,30,60000);
    else{session=auth(req,url);rate(session[1].id,20);}
    const a=await body(req);
-   if(url.pathname==='/api/create'){if(rooms.size>=30||[...rooms.values()].filter(r=>r.creator===ip).length>=3)throw Error('Servidor cheio. Tente mais tarde.');const r=room();r.creator=ip;rooms.set(r.code,r);const p=addPlayer(r,a.name);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});}
+   if(url.pathname==='/api/create'){if(rooms.size>=30||[...rooms.values()].filter(r=>r.creator===ip).length>=3)throw Error('Servidor cheio. Tente mais tarde.');const r=room(undefined,true);r.creator=ip;rooms.set(r.code,r);const p=addPlayer(r,a.name);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});}
    if(url.pathname==='/api/join'){const r=rooms.get(String(a.code).trim().toLowerCase());if(!r)throw Error('Sala não encontrada. Confira o convite.');const p=addPlayer(r,a.name);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});}
    const [r,p]=session;
-   if(url.pathname==='/api/start')start(r,p,a.practice===true);
+   if(url.pathname==='/api/lobby')configureLobby(r,p,a);
+   else if(url.pathname==='/api/start')start(r,p,a.practice===true);
    else if(url.pathname==='/api/command')command(r,p,a);
    else return json(res,404,{error:'Não encontrado.'});
-   if(url.pathname==='/api/start'||a.type==='surrender')broadcast(r);return json(res,200,{ok:true});
+   if(url.pathname==='/api/lobby'||url.pathname==='/api/start'||a.type==='surrender')broadcast(r);return json(res,200,{ok:true});
   }
   if(req.method==='GET'&&url.pathname==='/api/events'){
    rate(`events:${ip}`,12,10000);const [r,p]=auth(req,url);rate(`events-player:${p.id}`,4,10000);const old=streams.get(p.id);if(old)old.end();
    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(snapshot(r))}\n\n`);streams.set(p.id,res);
    req.on('close',()=>{if(streams.get(p.id)===res)streams.delete(p.id);});return;
   }
-  const files={'/':'index.html','/client.js':'client.js','/rules.js':'rules.js','/combat-effects.js':'combat-effects.js','/style.css':'style.css'};const file=files[url.pathname];
+  const files={'/':'index.html','/client.js':'client.js','/terrain.js':'terrain.js','/rules.js':'rules.js','/combat-effects.js':'combat-effects.js','/style.css':'style.css'};const file=files[url.pathname];
   if(req.method!=='GET'||!file)return json(res,404,{error:'Não encontrado.'});
   const data=await readFile(new URL(`./public/${file}`,import.meta.url));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(data);
  }catch(e){if(!res.headersSent)json(res,e.status||400,{error:e.message});else res.end();}

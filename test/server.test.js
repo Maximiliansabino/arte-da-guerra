@@ -15,7 +15,7 @@ test('HTTP: quatro sessões privadas recebem lobby, ordens e vitória; comandos 
   assert.equal((await post('start',{},a)).status,200);
   const readers=await Promise.all(all.map(async s=>{const res=await fetch(base+'/api/events?room='+s.code,{headers:{Authorization:'Bearer '+s.token},signal:abort.signal});assert.equal(res.status,200);return res.body.getReader();}));
   const initial=await Promise.all(readers.map(async r=>{const {value}=await r.read();return JSON.parse(new TextDecoder().decode(value).split('\n\n')[0].slice(6));}));
-  for(const state of initial){assert.equal(state.phase,'playing');assert.equal(state.players.length,4);assert.equal(state.entities.length,24);assert.equal(state.players[0].token,undefined);}
+  for(const state of initial){assert.equal(state.phase,'playing');assert.equal(state.players.length,4);assert.equal(state.entities.filter(e=>e.owner!=='neutral').length,24);assert.equal(state.players[0].token,undefined);}
   const w=initial[0].entities.find(e=>e.owner===a.id&&e.type==='worker');assert.equal((await post('command',{type:'move',ids:[w.id],x:500,y:500},a)).status,200);
   const update=await readers[1].read();const states=new TextDecoder().decode(update.value).split('\n\n').filter(Boolean).map(s=>JSON.parse(s.slice(6)));assert.ok(states.some(s=>s.entities.find(e=>e.id===w.id).order?.type==='move'));
   assert.equal((await post('command',{type:'surrender'},{...a,token:'fake'})).status,400);

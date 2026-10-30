@@ -1,3 +1,4 @@
+import {terrainBlocked} from './terrain.js';
 // Shared presentation data and deterministic rules. Only the server applies them.
 export const WORLD = 1800;
 export const MAX_LEVEL = 3;
@@ -21,6 +22,7 @@ export const COST = {
   ...Object.fromEntries(HERO_TYPES.map(type => [type, [220, 140]]))
 };
 export const STATS = {
+  guardian: {hp:260,speed:70,damage:15,range:28,cooldown:1.1,attackKind:'melee'},
   worker: {hp: 90, speed: 85, damage: 4, range: 23, cooldown: 1, gather: 7, attackKind: 'melee'},
   soldier: {hp: 230, speed: 95, damage: 19, range: 27, cooldown: .8, attackKind: 'melee'},
   archer: {hp: 125, speed: 100, damage: 14, range: 150, cooldown: 1, attackKind: 'arrow'},
@@ -36,7 +38,7 @@ export const STATS = {
   warden: {hp: 500, speed: 94, damage: 32, range: 85, cooldown: 1, hero: true, attackKind: 'bolt'}
 };
 export const LABELS = {
-  worker: 'Trabalhador', soldier: 'Soldado', archer: 'Arqueiro', base: 'Cidadela',
+  guardian: 'Guardião neutro', worker: 'Trabalhador', soldier: 'Soldado', archer: 'Arqueiro', base: 'Cidadela',
   barracks: 'Quartel', tower: 'Torre', hall: 'Salão dos Heróis',
   ...Object.fromEntries(HERO_TYPES.map(type => [type, HEROES[type].name]))
 };
@@ -99,9 +101,17 @@ export function connectedBuildings(state, ownerId) {
 export function placementError(state, ownerId, worker, point) {
   if (!worker || worker.owner !== ownerId || worker.type !== 'worker' || worker.hp <= 0) return 'Selecione um trabalhador seu.';
   if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y) || point.x < 20 || point.y < 20 || point.x > WORLD - 20 || point.y > WORLD - 20) return 'Escolha um local dentro do mapa.';
+  if(state.mapId&&[[-50,-50],[50,-50],[-50,50],[50,50],[0,0]].some(([dx,dy])=>terrainBlocked(point.x+dx,point.y+dy)))return 'Terreno bloqueado: construa fora da água, pontes, rochas e florestas.';
+  if(state.mapId&&Math.abs(point.x-900)<150)return 'Mantenha as pontes e suas entradas livres.';
   if (distance(worker, point) > BUILD_RULES.workerRange) return `Construa a até ${BUILD_RULES.workerRange} passos do trabalhador.`;
-  if (state.entities.some(e => e.type === 'base' && e.owner !== ownerId && e.hp > 0 && distance(e, point) < BUILD_RULES.enemyBaseRadius)) return `Mantenha ${BUILD_RULES.enemyBaseRadius} passos das cidadelas inimigas.`;
+  if (state.entities.some(e => e.type === 'base' && !allied(state,e.owner,ownerId) && e.hp > 0 && distance(e, point) < BUILD_RULES.enemyBaseRadius)) return `Mantenha ${BUILD_RULES.enemyBaseRadius} passos das cidadelas inimigas.`;
   if (!connectedBuildings(state, ownerId).some(e => distance(e, point) <= BUILD_RULES.linkRange)) return `Construa a até ${BUILD_RULES.linkRange} passos de uma construção pronta ligada à sua cidadela.`;
   if (state.entities.some(e => STATS[e.type]?.building && e.hp > 0 && distance(e, point) < BUILD_RULES.minSpacing) || state.resources.some(e => e.amount > 0 && distance(e, point) < BUILD_RULES.resourceSpacing)) return 'Local ocupado.';
   return null;
+}
+
+export function allied(state, a, b) {
+ if(a===b)return true;
+ const pa=state.players?.find(p=>p.id===a),pb=state.players?.find(p=>p.id===b);
+ return !!pa && !!pb && Number.isInteger(pa.team) && pa.team===pb.team;
 }
