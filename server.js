@@ -54,20 +54,40 @@ export const server=http.createServer(async(req,res)=>{
   }
   if(req.method==='GET'&&url.pathname==='/api/events'){
    rate(`events:${ip}`,12,10000);const [r,p]=auth(req,url);rate(`events-player:${p.id}`,4,10000);const old=streams.get(p.id);if(old)old.end();
-   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(snapshot(r))}\n\n`);streams.set(p.id,res);
+   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(snapshot(r,p))}\n\n`);streams.set(p.id,res);
    req.on('close',()=>{if(streams.get(p.id)===res)streams.delete(p.id);});return;
   }
-  const files={'/':'index.html','/client.js':'client.js','/terrain.js':'terrain.js','/rules.js':'rules.js','/combat-effects.js':'combat-effects.js','/style.css':'style.css'};const file=files[url.pathname];
+  const files={
+   '/':'index.html','/client.js':'client.js','/terrain.js':'terrain.js',
+   '/rules.js':'rules.js','/legends.js':'legends.js','/match-config.js':'match-config.js',
+   '/combat-effects.js':'combat-effects.js','/spell-effects.js':'spell-effects.js',
+   '/scene-art.js':'scene-art.js','/audio.js':'audio.js','/style.css':'style.css',
+   '/assets/hero-atlas.png':'assets/hero-atlas.png',
+   '/assets/fronteira-keyart.png':'assets/fronteira-keyart.png'
+  };
+  const file=Object.hasOwn(files,url.pathname)?files[url.pathname]:null;
   if(req.method!=='GET'||!file)return json(res,404,{error:'Não encontrado.'});
-  const data=await readFile(new URL(`./public/${file}`,import.meta.url));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(data);
+  const data=await readFile(new URL(`./public/${file}`,import.meta.url));
+  const type=file.endsWith('.png')?'image/png':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';
+  res.writeHead(200,{'Content-Type':type,'Cache-Control':file.endsWith('.png')?'public, max-age=3600':'no-cache'});res.end(data);
  }catch(e){if(!res.headersSent)json(res,e.status||400,{error:e.message});else res.end();}
 });
-function broadcast(r){const msg=`data: ${JSON.stringify(snapshot(r))}\n\n`;for(const p of r.players){const s=streams.get(p.id);if(s&&!s.destroyed){if(s.writableLength>1024*1024)s.destroy();else s.write(msg);}}}
+function broadcast(r){
+ // Allied commanders share exactly the same view. Cache only for this broadcast,
+ // so lobby changes and commands always produce a fresh authoritative snapshot.
+ const packets=new Map();
+ for(const p of r.players){
+  const s=streams.get(p.id);
+  if(!s||s.destroyed)continue;
+  if(s.writableLength>1024*1024){s.destroy();continue;}
+  const key=Number.isInteger(p.team)?`team:${p.team}`:p.id;
+  if(!packets.has(key))packets.set(key,`data: ${JSON.stringify(snapshot(r,p))}\n\n`);
+  s.write(packets.get(key));
+ }
+}
 server.requestTimeout=10000;server.headersTimeout=10000;server.keepAliveTimeout=5000;server.maxRequestsPerSocket=200;server.maxConnections=100;
 server.on('connection',socket=>{const ip=socket.remoteAddress,n=connections.get(ip)||0;if(n>=24){socket.destroy();return;}connections.set(ip,n+1);socket.on('close',()=>{const left=(connections.get(ip)||1)-1;if(left)connections.set(ip,left);else connections.delete(ip);});});
 const timer=setInterval(()=>{for(const r of rooms.values()){const active=r.phase==='playing';step(r);if(active)broadcast(r);}},100);timer.unref();
 const heartbeat=setInterval(()=>{for(const s of streams.values())if(!s.destroyed)s.write(': ping\n\n');},15000);heartbeat.unref();
 const cleanup=setInterval(()=>{const now=Date.now();for(const [key,b]of limits)if(now-b.t>60000)limits.delete(key);for(const [code,r]of rooms){const connected=r.players.some(p=>streams.has(p.id));if(connected)r.touched=now;if(now-r.touched>30*60000||now-r.created>6*60*60000){for(const p of r.players){streams.get(p.id)?.end();streams.delete(p.id);}rooms.delete(code);}}},60000);cleanup.unref();
 if(process.argv[1]===fileURLToPath(import.meta.url))server.listen(Number(process.env.PORT)||3000,'0.0.0.0',()=>console.log(`Arte da Guerra: http://localhost:${server.address().port}`));
-
-

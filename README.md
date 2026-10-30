@@ -1,179 +1,143 @@
-# Arte da Guerra
+# Arte da Guerra · Lendas da Fronteira
 
-RTS original para navegador, em português, com salas privadas para 2 a 4 pessoas e treino solo contra três guardiões. Não utiliza nomes, personagens, mapas, áudio, artes ou arquivos de Warcraft. Todo o visual é desenhado em Canvas com formas originais; não há dependências de execução nem serviços externos.
+RTS original 2D para navegador, em português, com construção de bases, economia, exércitos, seis heróis inspirados no folclore brasileiro e partidas entre amigos. **Versão 0.4.0.** Esta versão preserva o mapa, as pontes, os obstáculos e as equipes da versão 0.3.0 e acrescenta magia, progressão e cooperação contra quatro máquinas.
 
-## Download do itch.io
+## Abrir o jogo
 
-No Windows, extraia todo o ZIP, instale Node.js 22+ e abra **INICIAR-JOGO.cmd**. Depois acesse **http://localhost:3000**. Veja **LEIA-PRIMEIRO.txt** para o inicio rapido. Este pacote nao e um instalador .exe nem cria servidor publico automaticamente.
-
-## Executar no seu computador
-
-1. Instale o Node.js 22 ou superior (recomendado: 24 LTS).
-2. Extraia o ZIP e abra um terminal **dentro da pasta `arte-da-guerra`**, onde fica `package.json`.
-3. Execute:
+Requer **Node.js 22 ou superior**. Não há dependências de execução nem cadastro de jogador.
 
 ```sh
 npm start
 ```
 
-4. Abra **http://localhost:3000** no navegador do computador.
-5. Para conhecer o jogo, clique em **Treinar contra 3 guardiões**. Para jogar com os amigos, escolha **Criar sala privada** e copie o convite. O anfitrião inicia quando todos estiverem na sala.
+Abra **http://localhost:3000**. No Windows, também é possível abrir `INICIAR-JOGO.cmd`. Extraia o pacote inteiro antes de executar.
 
-Não é preciso executar `npm install` para jogar: só são usados módulos nativos do Node.js. Para encerrar o servidor, pressione Ctrl+C no terminal. A porta pode ser alterada pela variável de ambiente `PORT`.
+Para experimentar imediatamente, clique em **Treinar: você contra uma máquina**. Para jogar entre amigos, escolha **Criar sala com amigos**, selecione o modo no salão e copie o convite. O anfitrião inicia a partida.
 
-**Atenção ao convite local:** `localhost` só funciona no próprio computador. Para outros computadores na mesma rede, abra `http://IP-DO-COMPUTADOR:3000` e copie o convite a partir desse endereço. Uma regra de firewall pode ser necessária. Para amigos em outras casas, siga a publicação abaixo; o endereço local não é um link público.
+## Modos
 
-## Jogar
+| Modo | Participantes e equipes |
+| --- | --- |
+| Todos contra todos | Até 4 comandantes; o anfitrião também pode personalizar os times. |
+| Duplas | 2 × 2. As duas primeiras vagas formam uma equipe e as duas seguintes, a outra. Máquinas completam vagas vazias ao iniciar. |
+| Cooperativo | De 1 a 4 amigos na mesma equipe contra **4 máquinas**. Com 4 amigos, são **8 comandantes simultâneos**. |
+| Treino | Um jogador contra uma máquina. |
 
-- **Clique esquerdo:** seleciona unidade ou construção. Arraste uma caixa para selecionar várias unidades suas; Shift adiciona e duplo clique seleciona unidades do mesmo tipo na tela.
-- **Clique direito:** move no chão, coleta em árvores/cristais ou ataca um inimigo. Trabalhadores coletam; soldados, arqueiros e torres atacam. Unidades paradas defendem a área automaticamente.
-- **Cidadela selecionada:** cria trabalhadores. **Trabalhador selecionado:** escolhe quartel, torre ou Salão dos Heróis. O local precisa estar a até 250 passos do trabalhador e 300 de uma construção própria pronta, ligada à cidadela por uma cadeia de construções prontas. Obras levam 10 segundos; obras inacabadas não estendem o território. É proibido construir a menos de 360 passos de uma cidadela inimiga. A prévia verde/vermelha mostra a validade e o motivo; o servidor confere tudo novamente.
-- **Quartel selecionado:** treina soldados e arqueiros. Até 5 unidades por fila. Limite de 65 entidades por jogador (inclui construções e itens nas filas) e 18 construções.
-- **Salão dos Heróis selecionado:** escolha um entre seis heróis. A escolha fica registrada ao iniciar o recrutamento e vale até o fim da partida. Há no máximo um herói vivo ou em treinamento por jogador, mesmo com vários salões. Se morrer, recrute novamente o mesmo herói pelo custo normal; ele retorna no nível 1. Uma obra ou salão destruído não devolve recursos.
-- **Evoluir:** selecione uma unidade ou construção sua para comprar o próximo nível, até o nível 3. O botão informa custo em ouro/madeira e tempo. Uma construção com fila precisa concluir o treinamento antes de evoluir; durante sua evolução, não pode recrutar.
-- **Câmera:** WASD, setas, bordas do mapa ou arraste com botão do meio. Espaço centraliza sua cidadela. Roda do mouse aproxima/afasta. Clique no minimapa para navegar.
-- **X:** para unidades selecionadas. **Esc:** cancela o posicionamento de uma construção.
-- **Vitória:** vence o último jogador com cidadela. Destruir a cidadela elimina também o exército e as construções de seu dono. Rendição tem o mesmo efeito. Todos contra todos; ainda não há equipes.
+O anfitrião controla modo, máquinas e times. Cada participante escolhe sua própria ordem. Trocar o modo redefine as vagas de máquinas e as equipes; jogadores humanos não são removidos. Uma cidadela destruída elimina as entidades daquele comandante; a equipe continua enquanto algum aliado mantiver sua cidadela. A vitória pertence à equipe, inclusive aos aliados já eliminados.
 
-| Item | Ouro | Madeira | Tempo |
-| --- | ---: | ---: | ---: |
-| Trabalhador | 50 | 0 | 5 s |
-| Soldado | 70 | 25 | 8 s |
-| Arqueiro | 85 | 40 | 8 s |
-| Quartel | 140 | 100 | 10 s |
-| Torre | 100 | 80 | 10 s |
-| Salão dos Heróis | 180 | 140 | 10 s |
-| Herói (qualquer um dos seis) | 220 | 140 | 14 s |
+## Ordens da fronteira
 
-Cada jogador começa com 300 de ouro, 200 de madeira, 4 trabalhadores, 1 soldado e sua cidadela. Um trabalhador coleta 7 recursos/s ao alcançar a fonte. Recursos entram diretamente no saldo, sem viagens de entrega. Os guardiões dividem a coleta entre ouro e madeira, constroem quartel, recrutam e avançam após 45 segundos.
+São facções fictícias, não povos ou religiões reais. Todas podem recrutar qualquer um dos seis heróis.
 
-## Combate, heróis e evoluções — versão 0.2.0
+| Ordem | Vantagem |
+| --- | --- |
+| Guardiões da Mata | +15% de coleta de madeira. |
+| Círculo das Águas | +25% de regeneração de mana. |
+| Forja das Brasas | +5% de dano nos ataques. |
+| Vigília dos Astros | +15% de alcance de visão. |
 
-Golpes corpo a corpo, flechas e disparos mágicos têm efeitos visuais emitidos a partir dos ataques efetivamente calculados pelo servidor, inclusive na defesa automática e nas torres. O dano é aplicado no tick do ataque; a animação é uma representação visual curta desse evento, não uma segunda simulação de dano. Eventos têm identificação única, prazo de expiração e limite de armazenamento; snapshots repetidos não repetem o mesmo ataque.
+## Construção, economia e exército
 
-Os seis heróis têm nomes, aparência, vida, velocidade, alcance e cadência próprios. Cada um causa **25% mais dano** ao seu rival favorável e **20% menos dano** ao seu rival desfavorável. Nos outros confrontos não há modificador. Unidades comuns e construções não participam desse ciclo.
+Cada comandante começa com 300 de ouro, 200 de madeira, quatro trabalhadores, um soldado e uma cidadela. Trabalhadores creditam recursos diretamente no saldo, sem viagens de entrega.
 
-| Herói | Vantagem contra | Fraqueza contra | Estilo |
+- **Cidadela:** recruta trabalhadores.
+- **Quartel:** recruta soldados, arqueiros e curadores. Curadores recuperam automaticamente a vida de unidades aliadas próximas.
+- **Torre:** defesa automática com ataques visíveis.
+- **Salão das Lendas:** recruta o herói escolhido e vende itens a heróis próprios próximos.
+- **Oficina Encantada:** pesquisas para o exército e máquinas de cerco, com dano adicional contra construções.
+
+Cada obra leva 10 segundos. O ponto precisa estar a até **250 passos do trabalhador**, a até **300 de uma construção própria pronta ligada à cidadela**, e a pelo menos **360 de cidadelas inimigas**. Obras incompletas não ampliam o território. O servidor também rejeita água, obstáculos, pontes bloqueadas, sobreposição e recursos ocupados. O cliente mostra a prévia verde/vermelha com a razão do impedimento.
+
+Há até 65 entidades por comandante, incluindo construções e recrutamentos pendentes, 18 construções e cinco recrutas por fila. Construções produtivas recebem ponto de encontro pelo botão ou clique direito no destino. Os recrutas seguem para esse ponto.
+
+## Seis heróis e dezoito habilidades
+
+A escolha é permanente por partida, com **um herói vivo ou em treinamento por jogador**, mesmo com vários salões. Após morrer, é possível recrutar o mesmo herói; ele retorna com progressão e inventário iniciais.
+
+| Herói | Q | W | R · suprema |
 | --- | --- | --- | --- |
-| Bastião | Vulto | Vigília | Defensor corpo a corpo |
-| Vulto | Batedora | Bastião | Duelista veloz |
-| Batedora | Tempestade | Vulto | Arqueira de longo alcance |
-| Tempestade | Brasa | Batedora | Conjurador a distância |
-| Brasa | Vigília | Tempestade | Assalto corpo a corpo |
-| Vigília | Bastião | Brasa | Guardião de alcance curto |
+| Curupira | Raízes do Caminho: dano e imobilização | Casca Protetora: escudo em aliados | Floresta Desperta: área de raízes pulsantes |
+| Saci | Redemoinho: dano e lentidão | Passo do Vento: deslocamento mágico | Vendaval Livre: vórtice persistente |
+| Iara | Onda Serena: dano em área | Fonte Renovadora: cura em área | Coração do Rio: fonte de cura persistente |
+| Cuca | Névoa dos Sonhos: dano e lentidão | Lanterna Errante: explosão encantada | Noite Encantada: área de bruma ofensiva |
+| Boitatá | Rastro de Fogo: explosão na área | Escamas de Luz: escudo em aliados | Espiral Incandescente: fogo serpenteante persistente |
+| Guardião do Luar | Estrela Cadente: impacto em área | Véu da Vigília: cura próxima | Círculo do Luar: dano e imobilização |
 
-A relação favorável não garante vitória: nível, vida restante, distância, movimentação e apoio do exército também contam. Os valores iniciais precisam de ajuste após partidas reais entre os quatro amigos.
+As habilidades gastam mana, têm recarga e exigem alvo visível, quando aplicável. A mira mostra alcance e área antes de conjurar. O deslocamento do Saci exige destino livre e não atravessa o rio nem obstáculos. Magias ofensivas não ferem aliados.
 
-Cada evolução acrescenta, em relação ao nível 1, 35% de vida máxima e 25% de dano, quando aplicável. Unidades ganham 5% de velocidade por nível; trabalhadores também coletam 25% mais por nível. Cidadela, quartel e salão reduzem o tempo de recrutamento em 15% por nível (nível 3: 30% menos que o nível 1). Unidades novas começam no nível 1. Unidades e torres continuam agindo durante a evolução, usando os atributos antigos até ela terminar. A vida atual só aumenta pela diferença entre as capacidades: evoluir não apaga dano já sofrido.
+**Nível heroico e evolução comprada são diferentes:** experiência de combate aumenta o nível heroico de 1 a 5; a suprema libera no nível heroico 3. Equipamentos/evoluções individuais continuam com níveis 1 a 3, comprados com ouro e madeira. Heróis aliados próximos dividem a experiência de derrotas inimigas; acampamentos neutros ajudam a progredir.
 
-| Entidade | Nível 1 → 2: ouro / madeira | Tempo | Nível 2 → 3: ouro / madeira | Tempo |
-| --- | ---: | ---: | ---: | ---: |
-| Trabalhador | 80 / 40 | 10 s | 160 / 80 | 15 s |
-| Soldado | 110 / 70 | 10 s | 220 / 140 | 15 s |
-| Arqueiro | 120 / 80 | 10 s | 240 / 160 | 15 s |
-| Herói | 260 / 180 | 14 s | 520 / 360 | 21 s |
-| Cidadela | 240 / 180 | 16 s | 480 / 360 | 24 s |
-| Quartel | 180 / 140 | 16 s | 360 / 280 | 24 s |
-| Torre | 160 / 120 | 16 s | 320 / 240 | 24 s |
-| Salão dos Heróis | 240 / 180 | 16 s | 480 / 360 | 24 s |
+Ciclo de confrontos favoráveis: **Curupira → Saci → Iara → Cuca → Boitatá → Guardião do Luar → Curupira**. Cada herói causa +25% de dano ao rival seguinte e −20% ao anterior. Contra os demais, não há modificador de confronto. Habilidades, equipamentos, facções, posicionamento e apoio do exército também mudam o resultado.
 
-Se uma construção intermediária cair, as estruturas isoladas continuam funcionando, mas deixam de liberar novos locais de construção até a ligação à cidadela ser restabelecida. O raio protegido das bases adversárias continua valendo mesmo quando existe uma cadeia próxima de torres próprias.
+## Itens, pesquisas e evolução
 
-## Publicar para compartilhar o link
+O inventário de cada herói tem **três espaços**. Para comprar, aproxime-se a até 180 passos de um Salão das Lendas próprio, pronto e sem evolução em andamento.
 
-O projeto precisa de **um serviço Node.js persistente**, com uma única instância. Hospedagem apenas de arquivos estáticos (por exemplo GitHub Pages) não executa o servidor de partidas.
+| Item | Ouro / madeira | Efeito |
+| --- | ---: | --- |
+| Frasco de Vitalidade | 70 / 20 | Consome para recuperar 160 de vida. |
+| Orvalho Luminoso | 65 / 25 | Consome para recuperar 95 de mana. |
+| Talismã da Fronteira | 180 / 100 | +8 de dano nos ataques enquanto equipado; apenas uma cópia. |
 
-### Render
+Na oficina, pesquise **Armas Encantadas**, **Proteção da Fronteira** e **Coleta Cooperativa**, cada uma com dois níveis. Os benefícios valem para entidades atuais e futuras do próprio jogador. Custos, duração, nível e impedimentos aparecem no painel. Uma oficina não pesquisa e recruta ao mesmo tempo; a mesma pesquisa não pode ser comprada simultaneamente em oficinas diferentes.
 
-1. Coloque o conteúdo desta pasta em um repositório GitHub seu. Não coloque o ZIP dentro dele.
-2. No Render, crie um **Web Service** e conecte esse repositório.
-3. Se o projeto estiver em uma subpasta, configure **Root Directory** para a pasta que contém `package.json`.
-4. Selecione runtime **Node**, build **`npm install --ignore-scripts`** e start **`npm start`**. Configure Node 24 e health check **`/health`**. O arquivo `render.yaml` também fornece a configuração de Blueprint.
-5. Use **uma instância** e um serviço que permaneça ativo durante suas partidas. Consulte o plano e custos mostrados pela plataforma antes de contratar.
-6. Após o deploy ficar pronto, abra o endereço HTTPS informado pelo Render, crie a sala e envie **o convite dessa página** aos seus três amigos. O convite contém o código; cada amigo informa seu próprio nome e clica em Entrar. O anfitrião clica em Iniciar partida.
+Evoluções individuais acrescentam vida máxima e, conforme a entidade, ataque, velocidade, coleta ou produção mais rápida. Elas levam tempo, custam ouro e madeira e preservam o dano que já havia sido sofrido. Durante a evolução, unidades podem continuar agindo; construções não podem recrutar. A evolução é cancelada sem reembolso se a entidade for destruída.
 
-O servidor escuta em `0.0.0.0` e respeita `PORT`, conforme o contrato de Web Services. Não é necessária uma segunda hospedagem para o cliente; a mesma aplicação serve interface, comandos e atualizações.
+## Visão, terreno e magia
 
-Documentação oficial consultada em 29/10/2026: [Web Services](https://render.com/docs/web-services) e [Deploy de aplicação Node](https://render.com/docs/deploy-node-express-app). Não foi feito deploy em uma conta externa; nenhum endereço público foi criado nesta entrega.
+A **neblina de guerra é calculada pelo servidor**. Aliados compartilham visão e área explorada. Entidades adversárias ocultas não são enviadas ao navegador; dados privados e eventos fora da visão são filtrados. O minimapa obedece à mesma visão. Ao término da partida, o mapa fica revelado.
 
-### Docker ou outro provedor
+O Vale das Três Pontes tem água, passagens, florestas, rochas e acampamentos neutros. A navegação procura rotas e respeita obstáculos. Acampamentos concedem recompensa uma única vez. Recursos conhecidos podem ser visitados para coleta mesmo fora da visão atual.
 
-```sh
-docker build -t arte-da-guerra .
-docker run --rm -p 3000:3000 arte-da-guerra
+Golpes, flechas e magias representam eventos confirmados pelo servidor. Ataques aplicam dano no instante da simulação; os efeitos visuais não calculam dano novamente. As magias têm partículas, ondas, raízes, vórtices, serpentes de luz, névoa e escudos. O áudio sintetizado é opcional e ativado por interação do jogador.
+
+## Controles
+
+| Ação | Controle |
+| --- | --- |
+| Selecionar | Clique esquerdo ou caixa de seleção; Shift adiciona. |
+| Selecionar o mesmo tipo visível | Duplo clique. |
+| Mover, coletar, atacar ou definir ponto de encontro | Clique direito. |
+| Avançar atacando | A e clique no destino, com unidades selecionadas. |
+| Parar | X. |
+| Magias do herói selecionado | Q, W e R; clique no alvo quando exigido. |
+| Consumir itens | 1, 2 e 3, com o herói selecionado. |
+| Selecionar o próprio herói | F1. |
+| Grupos de controle | Ctrl + 4–9 para guardar; 4–9 para selecionar. |
+| Câmera | Setas, bordas ou arraste com botão do meio. WASD quando não estiver usando teclas de ações. |
+| Centralizar cidadela / zoom | Espaço / roda do mouse. |
+| Cancelar alvo ou construção | Esc ou clique direito. |
+
+## Amigos na mesma rede ou pela internet
+
+`localhost` só funciona no computador do servidor. Para LAN, configure o IP do anfitrião em `ALLOWED_HOSTS`; os amigos acessam `http://IP-DO-ANFITRIAO:3000`. No PowerShell, por exemplo:
+
+```powershell
+$env:ALLOWED_HOSTS="192.168.1.20"
+npm start
 ```
 
-Em produção, coloque HTTPS no proxy do provedor. Se usar Nginx, desative o buffering para `/api/events`, mantenha o timeout acima de 30 segundos e encaminhe `Host` e `X-Forwarded-Proto` corretamente. O servidor envia um comentário de keep-alive a cada 15 segundos. Não habilite cache no fluxo SSE. Provedores que encerram requisições longas não são adequados para esta versão.
+Use o IP real do anfitrião. Para internet, mantenha o serviço Node existente ou publique como **Web Service persistente**, não como página estática. O mesmo servidor serve interface, ordens HTTP e snapshots por SSE. Use uma única instância. `PORT` configura a porta; `RENDER_EXTERNAL_HOSTNAME` autoriza o domínio do Render; outros domínios devem constar em `ALLOWED_HOSTS`, sem curingas. Em produção use HTTPS no proxy e `NODE_ENV=production`.
 
-## Arquitetura e sincronização
+O repositório conserva `render.yaml` e `Dockerfile`. No Render: runtime Node, build `npm install --ignore-scripts`, start `npm start`, health `/health`. Verifique a configuração e as condições do serviço existente antes de publicar. Este pacote não cria hospedagem automaticamente.
 
-```text
-Navegadores (até 4 por sala)
-    | POST /api/command — intenção + token do jogador
-    v
-Servidor Node — valida identidade, propriedade, custo, alcance, fase e limites
-    | simulação fixa: 10 ticks/s, uma única fonte de verdade
-    | movimento, coleta, filas, combate simultâneo, eliminação e vitória
-    v
-GET /api/events — snapshots por SSE a 10 Hz durante a partida
-    |
-Canvas de cada jogador — desenho a requestAnimationFrame
-```
+**Reiniciar ou atualizar o servidor encerra as partidas em andamento.** Salas ficam na memória, expiram após inatividade e não são compartilhadas entre processos. Use o convite da página pública, nunca um convite `localhost`, para amigos em redes diferentes.
 
-O cliente nunca determina dano, recursos, unidades produzidas ou resultado. Cada ordem é aplicada serialmente no processo Node; a simulação decide o estado seguinte. Snapshots completos evitam divergência acumulada e simplificam reconexão. O transporte é **SSE para estado + HTTP POST para ordens**, sobre TCP, em vez de WebSocket; é comunicação em tempo real com servidor autoritativo. A simulação fica separada do transporte para permitir futura troca por WebSocket sem reescrever as regras.
-
-- `game.js`: simulação autoritativa, sem HTTP ou acesso ao navegador.
-- `public/rules.js`: custos, atributos, heróis, níveis e validação de terreno compartilhados com a prévia do cliente. Só o servidor efetiva mudanças.
-- `public/combat-effects.js`: consumo dos eventos de ataque e efeitos no Canvas.
-- `server.js`: servidor HTTP nativo, salas, tokens, comandos, SSE, limites e expiração.
-- `public/client.js`: entrada, seleção, câmera, comandos, interface e arte procedural.
-- `public/style.css` e `public/index.html`: interface responsiva em português e manual dentro do jogo.
-- `test/`: testes de regras e integração HTTP com quatro clientes de streaming.
-
-Salas usam códigos aleatórios de 64 bits, sem listagem pública. Um convite permite ocupar uma vaga antes do início. Tokens individuais de 256 bits são enviados no cabeçalho Authorization e ficam em sessionStorage; nunca entram no link ou nos snapshots. Recarregar a mesma aba retoma o jogador enquanto a sala existir. O nome é salvo localmente para conveniência. Fechar a aba não elimina o jogador automaticamente: ele fica parado e pode ser atacado. Não compartilhe o sessionStorage. O código da sala é um segredo de convite, não um sistema de contas.
-
-Comandos têm limite de frequência e corpo de até 8 KB; há limites de criação/entrada, filas, entidades e construções. Respostas usam CSP e nomes são desenhados como texto. Isso é uma base para amigos, não uma plataforma pública resistente a abuso: antes de abrir inscrições, acrescente proteção de borda, autenticação, métricas e tratamento de tráfego hostil. O limite por IP usa o endereço da conexão; atrás de proxy pode ser compartilhado entre visitantes.
-
-## Testes
+## Testes e organização
 
 ```sh
 npm test
 ```
 
-Cobrem quatro vagas, autorização, segurança HTTP, coleta, movimento, combate e vitória; território conectado e bloqueio de construção invasora; herói único e escolha permanente; custos, tempo e atributos das evoluções; expiração e deduplicação dos efeitos; ações e renderização do cliente em ambiente simulado. O teste multiplayer abre quatro conexões SSE reais com o servidor local, coleta recursos, recruta os quatro heróis, evolui uma unidade e confirma os mesmos eventos de ataque para todos. A suíte leva aproximadamente 25 segundos por respeitar os tempos reais de recrutamento nesse teste.
+A suíte cobre regras, equipes, fog, magia, inventário, pesquisa, território, segurança HTTP e partidas com múltiplos clientes. Os testes de cliente executam os manipuladores reais com DOM/Canvas simulados; isso não substitui uma revisão completa do layout em navegador. Os duelos automatizados verificam os confrontos básicos dos heróis em condições controladas, sem provar equilíbrio de partidas com exércitos e habilidades.
 
-Um teste adicional executa 108 duelos controlados: seis relações favoráveis, três níveis, três distâncias iniciais e ambas as ordens de criação. Todos os confrontos favorecem o herói previsto; isso verifica a regra em condições iguais, sem garantir equilíbrio em partidas com movimentação manual e exércitos.
+- `game.js`: ordens, movimento, economia, combate e IA.
+- `match.js`: salão, modos, equipes, recursos, vitória e snapshots com visão individual.
+- `powers.js`: habilidades, estados, itens, pesquisas e experiência.
+- `public/rules.js`, `legends.js`, `match-config.js`, `terrain.js`: dados e regras compartilhados.
+- `public/client.js`: entrada, interface, seleção, câmera e desenho.
+- `public/scene-art.js`, `spell-effects.js`, `combat-effects.js`, `audio.js`: arte, efeitos e som.
+- `public/assets/`: arte original gerada para o jogo e prompts de produção.
+- `server.js`: transporte autenticado, arquivos públicos e limites.
 
-Nesta atualização, foram conferidas as operações do cliente e uma prévia do desenho real em Canvas. Os testes de interface usam um ambiente simulado; não validam o layout completo em um navegador. Ainda é necessário jogar com os quatro amigos em redes distintas para avaliar latência, legibilidade e equilíbrio durante partidas reais.
-
-## Limites assumidos e próximos passos
-
-Este MVP é uma arena RTS 2D para desktop com mouse e teclado; o layout se adapta a telas estreitas, mas não há controles completos para celular. Sem som, habilidades ativas, neblina de guerra, campanhas, diplomacia, equipes ou replay. A navegação considera terreno e construções; unidades móveis ainda podem se sobrepor. Construções se materializam no ponto escolhido pelo trabalhador e levam tempo para terminar, sem ele precisar ficar trabalhando ali. O cliente desenha os snapshots sem interpolação de posição; movimento a 10 Hz pode parecer menos suave com latência.
-
-Partidas ficam **somente na memória**: reiniciar, suspender ou atualizar o servidor apaga todas as salas. Salas sem conexões por 30 minutos são removidas. Não há recuperação após reinício nem reserva de vaga fora da sessão da aba. Não aumente o número de instâncias nesta versão: processos diferentes não compartilham salas.
-
-Evolução sugerida: (1) teste dos quatro amigos e ajustes de equilíbrio, (2) colisão e navegação por grade, (3) interpolação e orçamento de rede, (4) neblina de guerra calculada no servidor com snapshots por jogador, (5) habilidades ativas e ajustes dos seis heróis, (6) persistência de partidas e roteamento de salas entre processos. Manter testes autoritativos a cada etapa.
-
-
-
-
-## Segurança e publicação — versão 0.1.1
-
-- O servidor aceita localhost/127.0.0.1 e o domínio informado automaticamente pelo Render (RENDER_EXTERNAL_HOSTNAME). Outros nomes/IPs precisam ser configurados explicitamente em ALLOWED_HOSTS, separados por vírgula. Não use curingas. Para LAN no PowerShell: `$env:ALLOWED_HOSTS="192.168.1.20"` e depois `npm start`, usando o IP real do anfitrião.
-- No Render, use **Web Service**, plano **Free**, uma única instância, Node 24, build `npm install --ignore-scripts`, início `npm start`, health `/health`, NODE_ENV=production. render.yaml já fixa plan: free. Não crie banco ou disco pago.
-- O endereço público deve ser HTTPS. O Render termina TLS; o processo Node continua em HTTP internamente. Não exponha diretamente a porta interna na internet. NODE_ENV=production rejeita Origin HTTP nos pedidos de navegador.
-- Não se confia em X-Forwarded-For nem X-Forwarded-Proto enviados pelo cliente para autorizar acesso. Limites por IP usam o endereço da conexão; atrás de proxy podem ser compartilhados entre visitantes. Este pacote destina-se a pequenos testes com amigos.
-- Limites: 30 salas no servidor, 3 criadas por endereço de conexão, 20 comandos/jogador/s, 100 conexões totais e 24 por endereço de conexão, além dos limites de entrada/reconexão. Salas expiram após 30 minutos sem conexão ou 6 horas de vida.
-- Convites continuam permitindo entrada a quem possuir o código; não há aprovação/expulsão nem salvamento permanente. Reinício e suspensão do plano gratuito apagam as partidas.
-- Comandos inválidos são rejeitados e atualizações de movimento são agrupadas no ciclo de 10 Hz. Há testes de regressão para Host, Origin, tamanho, conteúdo, autenticação e frequência.
-
-
-## Salão, times e Vale das Três Pontes — 0.3.0
-
-Antes de iniciar, o anfitrião escolhe o time de cada participante e adiciona/remove computadores nas vagas livres. Mesmo número significa aliados; números diferentes são inimigos. Há quatro vagas e são necessários pelo menos dois times. Humanos continuam entrando pelo convite nas vagas disponíveis. Para abrir uma vaga ocupada por uma máquina, remova-a antes de convidar. A configuração fica bloqueada após o início; esta versão não substitui automaticamente um humano desconectado.
-
-O mapa original Vale das Três Pontes possui rio atravessável somente nas três pontes, florestas e rochas que bloqueiam movimento e construção, e quatro acampamentos com dois guardiões neutros cada. Eliminar o último guardião rende 120 de ouro ao jogador responsável pelo golpe final. Guardiões defendem sua área. O terreno e a navegação são calculados pelo servidor; o cliente apenas os desenha. Rotas usam uma grade limitada e levam em conta construções. Unidades ainda podem se sobrepor entre si; não há formação de exército nem colisão entre unidades móveis.
-
-Aliados não recebem ataques automáticos nem ordens de ataque uns dos outros, mas cada comandante conserva controle exclusivo das próprias unidades e recursos. A vitória ocorre quando resta um único time com cidadelas. Um jogador eliminado acompanha o resultado do time.
-
-Esta atualização adiciona terreno e acampamentos à base existente. Ainda não inclui névoa de guerra, lojas, inventário de itens ou estruturas capturáveis. O mapa é visível para todos. O visual continua sendo arte original desenhada em Canvas. Salvar/reiniciar o servidor apaga as partidas. Botões do salão permitem jogos como humano + computador contra duas máquinas.
+Esta é uma experiência original em 2D, não uma reprodução de Warcraft. Ainda não inclui campanha cinematográfica, editor de mapas, partidas salvas, replay ou unidades aéreas. O foco desta versão é uma partida completa de estratégia entre amigos com os modos descritos acima. Consulte [CREDITOS.md](CREDITOS.md) para referências culturais e autoria visual.

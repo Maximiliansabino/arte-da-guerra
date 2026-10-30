@@ -16,7 +16,7 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo ARTE DA GUERRA - Prototipo 0.1.0
+echo ARTE DA GUERRA - Lendas da Fronteira 0.4.0
 echo Depois que o servidor iniciar, abra http://localhost:3000
 echo Mantenha esta janela aberta enquanto joga. Ctrl+C encerra o servidor.
 echo.
