@@ -1,4 +1,4 @@
-ARTE DA GUERRA - LENDAS DA FRONTEIRA 0.4.0
+ARTE DA GUERRA - LENDAS DA FRONTEIRA 0.5.1
 
 Este download inclui o jogo e o servidor local. Ainda nao e um instalador .exe.
 Requer Node.js 22 ou superior: https://nodejs.org/
@@ -10,6 +10,7 @@ WINDOWS
 4. Quando aparecer a mensagem do servidor, abra http://localhost:3000
 5. Escolha treinar contra uma maquina ou criar uma sala com amigos.
 6. No salao, escolha duplas, todos contra todos ou ate 4 amigos contra 4 maquinas.
+7. Escolha a dificuldade das maquinas: facil, normal ou dificil.
 
 OUTROS SISTEMAS
 Abra um terminal nesta pasta e execute: npm start

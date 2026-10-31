@@ -59,7 +59,7 @@ export const server=http.createServer(async(req,res)=>{
   }
   const files={
    '/':'index.html','/client.js':'client.js','/terrain.js':'terrain.js',
-   '/rules.js':'rules.js','/legends.js':'legends.js','/match-config.js':'match-config.js',
+   '/rules.js':'rules.js','/legends.js':'legends.js','/match-config.js':'match-config.js','/ai-config.js':'ai-config.js',
    '/combat-effects.js':'combat-effects.js','/spell-effects.js':'spell-effects.js',
    '/scene-art.js':'scene-art.js','/audio.js':'audio.js','/style.css':'style.css',
    '/assets/hero-atlas.png':'assets/hero-atlas.png',

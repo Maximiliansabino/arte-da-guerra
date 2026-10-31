@@ -1,6 +1,6 @@
 # Arte da Guerra · Lendas da Fronteira
 
-RTS original 2D para navegador, em português, com construção de bases, economia, exércitos, seis heróis inspirados no folclore brasileiro e partidas entre amigos. **Versão 0.4.0.** Esta versão preserva o mapa, as pontes, os obstáculos e as equipes da versão 0.3.0 e acrescenta magia, progressão e cooperação contra quatro máquinas.
+RTS original 2D para navegador, em português, com construção de bases, economia, exércitos, seis heróis inspirados no folclore brasileiro e partidas entre amigos. **Versão 0.5.1.** Esta versão acrescenta uma fila visual de produção às melhorias de jogabilidade da versão 0.5.0: ordens de trabalho e combate, caminhos e saídas das construções, reparos, dificuldades de IA e evolução coletiva das unidades no quartel.
 
 ## Abrir o jogo
 
@@ -12,7 +12,7 @@ npm start
 
 Abra **http://localhost:3000**. No Windows, também é possível abrir `INICIAR-JOGO.cmd`. Extraia o pacote inteiro antes de executar.
 
-Para experimentar imediatamente, clique em **Treinar: você contra uma máquina**. Para jogar entre amigos, escolha **Criar sala com amigos**, selecione o modo no salão e copie o convite. O anfitrião inicia a partida.
+Para experimentar imediatamente, escolha a **Dificuldade do treino** e clique em **Treinar: você contra uma máquina**. Para jogar entre amigos, escolha **Criar sala com amigos**, selecione o modo e a dificuldade no salão e copie o convite. O anfitrião inicia a partida.
 
 ## Modos
 
@@ -23,7 +23,9 @@ Para experimentar imediatamente, clique em **Treinar: você contra uma máquina*
 | Cooperativo | De 1 a 4 amigos na mesma equipe contra **4 máquinas**. Com 4 amigos, são **8 comandantes simultâneos**. |
 | Treino | Um jogador contra uma máquina. |
 
-O anfitrião controla modo, máquinas e times. Cada participante escolhe sua própria ordem. Trocar o modo redefine as vagas de máquinas e as equipes; jogadores humanos não são removidos. Uma cidadela destruída elimina as entidades daquele comandante; a equipe continua enquanto algum aliado mantiver sua cidadela. A vitória pertence à equipe, inclusive aos aliados já eliminados.
+O anfitrião controla modo, dificuldade das máquinas e times. Cada participante escolhe sua própria ordem. Trocar o modo redefine as vagas de máquinas e as equipes; jogadores humanos não são removidos. Uma cidadela destruída elimina as entidades daquele comandante; a equipe continua enquanto algum aliado mantiver sua cidadela. A vitória pertence à equipe, inclusive aos aliados já eliminados.
+
+**Fácil, normal e difícil** mudam a preparação, a composição e a coordenação dos exércitos. As máquinas reúnem tropas antes de avançar, organizam reforços e defendem a base. Os níveis mais altos usam com mais iniciativa evolução, magia e cerco. Todos obedecem aos mesmos custos, tempos de produção e limites dos humanos; dificuldade não concede recursos gratuitos.
 
 ## Ordens da fronteira
 
@@ -38,17 +40,23 @@ São facções fictícias, não povos ou religiões reais. Todas podem recrutar 
 
 ## Construção, economia e exército
 
-Cada comandante começa com 300 de ouro, 200 de madeira, quatro trabalhadores, um soldado e uma cidadela. Trabalhadores creditam recursos diretamente no saldo, sem viagens de entrega.
+Cada comandante começa com 300 de ouro, 200 de madeira, quatro trabalhadores, um soldado e uma cidadela. Selecione trabalhadores e use **Minerar ouro** ou **Coletar madeira**; recursos próximos oferecem uma ação direta. O clique direito no recurso também funciona. O painel identifica a atividade e o destino, e ferramentas e partículas indicam a coleta efetiva. Trabalhadores creditam recursos diretamente no saldo, sem viagens de entrega.
 
 - **Cidadela:** recruta trabalhadores.
-- **Quartel:** recruta soldados, arqueiros e curadores. Curadores recuperam automaticamente a vida de unidades aliadas próximas.
+- **Quartel I:** recruta soldados. **Quartel II:** também libera arqueiros. **Quartel III:** também libera curadores e treinamento coletivo. Curadores recuperam automaticamente a vida de unidades aliadas próximas.
 - **Torre:** defesa automática com ataques visíveis.
 - **Salão das Lendas:** recruta o herói escolhido e vende itens a heróis próprios próximos.
 - **Oficina Encantada:** pesquisas para o exército e máquinas de cerco, com dano adicional contra construções.
 
-Cada obra leva 10 segundos. O ponto precisa estar a até **250 passos do trabalhador**, a até **300 de uma construção própria pronta ligada à cidadela**, e a pelo menos **360 de cidadelas inimigas**. Obras incompletas não ampliam o território. O servidor também rejeita água, obstáculos, pontes bloqueadas, sobreposição e recursos ocupados. O cliente mostra a prévia verde/vermelha com a razão do impedimento.
+Cada obra leva 10 segundos. O ponto precisa estar a até **250 passos do trabalhador**, a até **300 de uma construção própria pronta ligada à cidadela**, e a pelo menos **360 de cidadelas inimigas**. Obras incompletas não ampliam o território. O servidor também rejeita água, obstáculos, pontes bloqueadas, sobreposição e recursos ocupados. O cliente mostra a prévia verde/vermelha com a razão do impedimento. A colocação verifica a passagem de saída e reposiciona localmente unidades que ficariam cobertas; uma colocação sem saída segura é rejeitada antes de cobrar os recursos.
 
-Há até 65 entidades por comandante, incluindo construções e recrutamentos pendentes, 18 construções e cinco recrutas por fila. Construções produtivas recebem ponto de encontro pelo botão ou clique direito no destino. Os recrutas seguem para esse ponto.
+Há até 65 entidades por comandante, incluindo construções e recrutamentos pendentes, 18 construções e cinco recrutas por fila. Construções produtivas recebem uma **bandeira de encontro** pelo botão ou clique direito no destino. Ao marcar ouro ou madeira na cidadela, novos trabalhadores saem com a ordem de coleta. Tropas seguem para a posição da bandeira. A saída é escolhida em uma passagem livre; se todas estiverem bloqueadas, a produção pronta espera na fila e tenta novamente, sem perder o recruta nem cobrar outra vez.
+
+Ao selecionar uma construção própria, o painel mostra a **fila na ordem dos pedidos**. O primeiro recruta aparece **em produção**, com barra de progresso, percentual e tempo restante; cada pedido seguinte aparece **em espera**, inclusive quando são unidades do mesmo tipo. Ao concluir o primeiro, o próximo assume automaticamente seu lugar. Com saída bloqueada, o primeiro aparece **pronto, aguardando saída livre**, a 100%, e os demais continuam esperando. O prédio selecionado também exibe um resumo no mapa. Obras, evolução de prédios, pesquisas e treinamento coletivo mostram sua atividade e progresso no mesmo painel.
+
+Trabalhadores podem **reparar construções próprias ou aliadas prontas** a **3 pontos de vida por segundo por trabalhador**, sem custo de recursos. Use o botão de reparo ou clique direito na construção danificada. O trabalhador se aproxima da borda, repara e para quando a vida fica completa; não reconstrói estruturas destruídas.
+
+O canto do campo mostra unidades **sem ação**, agrupadas por tipo. Clique em um grupo para selecioná-lo. Unidades caminhando, coletando, reparando ou em combate não entram nessa contagem. O painel diferencia aproximação, ataque efetivo e caminho bloqueado. Alvos visíveis recebem uma indicação quando seus atacantes estão selecionados.
 
 ## Seis heróis e dezoito habilidades
 
@@ -65,7 +73,7 @@ A escolha é permanente por partida, com **um herói vivo ou em treinamento por 
 
 As habilidades gastam mana, têm recarga e exigem alvo visível, quando aplicável. A mira mostra alcance e área antes de conjurar. O deslocamento do Saci exige destino livre e não atravessa o rio nem obstáculos. Magias ofensivas não ferem aliados.
 
-**Nível heroico e evolução comprada são diferentes:** experiência de combate aumenta o nível heroico de 1 a 5; a suprema libera no nível heroico 3. Equipamentos/evoluções individuais continuam com níveis 1 a 3, comprados com ouro e madeira. Heróis aliados próximos dividem a experiência de derrotas inimigas; acampamentos neutros ajudam a progredir.
+**Nível heroico e treinamento coletivo são diferentes:** experiência de combate aumenta o nível heroico de 1 a 5; a suprema libera no nível heroico 3. O treinamento comprado no Quartel III eleva todas as unidades próprias, inclusive heróis, pelos níveis de equipamento I, II e III. Heróis aliados próximos dividem a experiência de derrotas inimigas; acampamentos neutros ajudam a progredir.
 
 Ciclo de confrontos favoráveis: **Curupira → Saci → Iara → Cuca → Boitatá → Guardião do Luar → Curupira**. Cada herói causa +25% de dano ao rival seguinte e −20% ao anterior. Contra os demais, não há modificador de confronto. Habilidades, equipamentos, facções, posicionamento e apoio do exército também mudam o resultado.
 
@@ -79,9 +87,16 @@ O inventário de cada herói tem **três espaços**. Para comprar, aproxime-se a
 | Orvalho Luminoso | 65 / 25 | Consome para recuperar 95 de mana. |
 | Talismã da Fronteira | 180 / 100 | +8 de dano nos ataques enquanto equipado; apenas uma cópia. |
 
-Na oficina, pesquise **Armas Encantadas**, **Proteção da Fronteira** e **Coleta Cooperativa**, cada uma com dois níveis. Os benefícios valem para entidades atuais e futuras do próprio jogador. Custos, duração, nível e impedimentos aparecem no painel. Uma oficina não pesquisa e recruta ao mesmo tempo; a mesma pesquisa não pode ser comprada simultaneamente em oficinas diferentes.
+Na oficina, pesquise **Armas Encantadas**, **Proteção da Fronteira** e **Coleta Cooperativa**, cada uma com dois níveis. As duas pesquisas militares exigem um Quartel III próprio pronto; coleta pode ser pesquisada antes. Os benefícios valem para entidades atuais e futuras do próprio jogador. Custos, duração, nível e impedimentos aparecem no painel. Uma oficina não pesquisa e recruta ao mesmo tempo; a mesma pesquisa não pode ser comprada simultaneamente em oficinas diferentes.
 
-Evoluções individuais acrescentam vida máxima e, conforme a entidade, ataque, velocidade, coleta ou produção mais rápida. Elas levam tempo, custam ouro e madeira e preservam o dano que já havia sido sofrido. Durante a evolução, unidades podem continuar agindo; construções não podem recrutar. A evolução é cancelada sem reembolso se a entidade for destruída.
+**Construções** continuam evoluindo individualmente até III. **Personagens** evoluem coletivamente no Quartel III; não é necessário selecionar e pagar por cada soldado, trabalhador ou herói.
+
+| Treinamento coletivo | Ouro / madeira | Duração |
+| --- | ---: | ---: |
+| II | 450 / 300 | 25 segundos |
+| III | 750 / 500 | 35 segundos |
+
+O treinamento beneficia todas as unidades atuais e futuras do jogador, preservando o dano já sofrido. Cada jogador pode ter somente um treinamento em andamento, mesmo com vários quartéis. O quartel ocupado pelo treinamento não recruta nem executa outra evolução ao mesmo tempo. Unidades continuam agindo durante a pesquisa. Se o quartel for destruído, o treinamento incompleto é perdido; benefícios já concluídos permanecem.
 
 ## Visão, terreno e magia
 
@@ -97,7 +112,8 @@ Golpes, flechas e magias representam eventos confirmados pelo servidor. Ataques 
 | --- | --- |
 | Selecionar | Clique esquerdo ou caixa de seleção; Shift adiciona. |
 | Selecionar o mesmo tipo visível | Duplo clique. |
-| Mover, coletar, atacar ou definir ponto de encontro | Clique direito. |
+| Mover, coletar, reparar, atacar ou definir ponto de encontro | Clique direito. |
+| Encontrar unidades sem ação | Clique no grupo do contador no canto. |
 | Avançar atacando | A e clique no destino, com unidades selecionadas. |
 | Parar | X. |
 | Magias do herói selecionado | Q, W e R; clique no alvo quando exigido. |
@@ -131,7 +147,9 @@ npm test
 
 A suíte cobre regras, equipes, fog, magia, inventário, pesquisa, território, segurança HTTP e partidas com múltiplos clientes. Os testes de cliente executam os manipuladores reais com DOM/Canvas simulados; isso não substitui uma revisão completa do layout em navegador. Os duelos automatizados verificam os confrontos básicos dos heróis em condições controladas, sem provar equilíbrio de partidas com exércitos e habilidades.
 
-- `game.js`: ordens, movimento, economia, combate e IA.
+- `game.js`: ordens, produção, economia, atividades e combate.
+- `navigation.js`: aproximação, rotas, passagem de saída e colocação segura.
+- `ai.js`, `public/ai-config.js`: estratégia e dificuldades das máquinas.
 - `match.js`: salão, modos, equipes, recursos, vitória e snapshots com visão individual.
 - `powers.js`: habilidades, estados, itens, pesquisas e experiência.
 - `public/rules.js`, `legends.js`, `match-config.js`, `terrain.js`: dados e regras compartilhados.
