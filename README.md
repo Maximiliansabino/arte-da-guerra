@@ -1,6 +1,6 @@
 # Arte da Guerra · Lendas da Fronteira
 
-RTS original 2D para navegador, em português, com construção de bases, economia, exércitos, seis heróis inspirados no folclore brasileiro e partidas entre amigos. **Versão 0.5.1.** Esta versão acrescenta uma fila visual de produção às melhorias de jogabilidade da versão 0.5.0: ordens de trabalho e combate, caminhos e saídas das construções, reparos, dificuldades de IA e evolução coletiva das unidades no quartel.
+RTS original 2D para navegador, em português, com construção de bases, economia, exércitos, seis heróis inspirados no folclore brasileiro e partidas entre amigos. **Versão 0.8.0.** Esta atualização mostra a versão na entrada e no lobby, acrescenta fichas com história e estratégia dos seis heróis e permite recrutar em várias construções com um clique. A câmera usa setas e mouse; WASD deixa de movimentá-la. Mantém os mapas, bondes, coleta automática, defesa das torres, arte dos mercenários e demais melhorias anteriores.
 
 ## Abrir o jogo
 
@@ -12,7 +12,9 @@ npm start
 
 Abra **http://localhost:3000**. No Windows, também é possível abrir `INICIAR-JOGO.cmd`. Extraia o pacote inteiro antes de executar.
 
-Para experimentar imediatamente, escolha a **Dificuldade do treino** e clique em **Treinar: você contra uma máquina**. Para jogar entre amigos, escolha **Criar sala com amigos**, selecione o modo e a dificuldade no salão e copie o convite. O anfitrião inicia a partida.
+O cabeçalho e o lobby exibem a **versão do servidor que está rodando**, lida de `package.json`. Ao instalar uma nova versão, reinicie o servidor e recarregue a página para conferir o número exibido.
+
+Para experimentar imediatamente, escolha o mapa e a **Dificuldade do treino**, depois clique em **Treinar: você contra uma máquina**. Para jogar entre amigos, escolha **Criar sala com amigos**, selecione mapa, modo e dificuldade no salão e copie o convite. O anfitrião inicia a partida.
 
 ## Modos
 
@@ -26,6 +28,28 @@ Para experimentar imediatamente, escolha a **Dificuldade do treino** e clique em
 O anfitrião controla modo, dificuldade das máquinas e times. Cada participante escolhe sua própria ordem. Trocar o modo redefine as vagas de máquinas e as equipes; jogadores humanos não são removidos. Uma cidadela destruída elimina as entidades daquele comandante; a equipe continua enquanto algum aliado mantiver sua cidadela. A vitória pertence à equipe, inclusive aos aliados já eliminados.
 
 **Fácil, normal e difícil** mudam a preparação, a composição e a coordenação dos exércitos. As máquinas reúnem tropas antes de avançar, organizam reforços e defendem a base. Os níveis mais altos usam com mais iniciativa evolução, magia e cerco. Todos obedecem aos mesmos custos, tempos de produção e limites dos humanos; dificuldade não concede recursos gratuitos.
+
+## Mapas e posições iniciais
+
+| Mapa | Terreno |
+| --- | --- |
+| Vale das Três Pontes | Rio central, três travessias e bosques nas duas margens. |
+| Serra dos Cristais | Rochas e cristais formam corredores e passagens entre as bases. |
+| Lagoa Encantada | Duas áreas de lago cercam uma arena central acessível por terra. |
+
+O anfitrião escolhe o mapa antes de iniciar. Cada nova partida sorteia as posições: no todos contra todos, os comandantes trocam de canto; em duplas e no cooperativo, sorteiam-se o lado das equipes e a posição de cada aliado nesse lado. No treino, sorteiam-se lado e posição dos adversários. Identidade, cor, controle das unidades e composição das equipes são preservados.
+
+As posições iniciais são informação pública e aparecem como pequenos marcadores no minimapa, também usados pela IA para planejar. Isso não revela as tropas, construções novas ou a economia inimiga sob a neblina. Os recursos iniciais ficam distribuídos nos locais de partida para que o sorteio não altere a oferta inicial. Não há garantia de uma posição diferente em duas partidas consecutivas: o sorteio pode repetir um resultado.
+
+## Mercenários e chefe do mapa
+
+Cada mapa tem acampamentos fáceis, médios e difíceis, além de um chefe central. Vida, ataque, alcance, experiência e recompensa variam conforme o mercenário. As cores, nomes e indicações de dificuldade permitem reconhecer os riscos antes de se aproximar.
+
+**Colosso da Pedra:** o jogador responsável pelo golpe final ganha o direito permanente de manter **dois heróis**, durante aquela partida. O golpe pode vir de uma unidade, estrutura ou magia desse jogador. O prêmio não se estende automaticamente aos aliados. A segunda contratação é feita no Salão das Lendas e paga normalmente com ouro e madeira. Derrotar o chefe novamente não libera um terceiro herói; outro jogador pode conquistar sua própria segunda vaga em uma derrota posterior do chefe.
+
+O Colosso prepara um impacto em área: o círculo luminoso no chão avisa onde ele atingirá. Há **1,2 segundo para sair da área de 150 passos**, e a habilidade tem oito segundos de recarga. Durante a preparação, o chefe para de andar e de atacar; derrotá-lo cancela o impacto pendente. Separe as tropas e aproveite esse intervalo para desviar.
+
+**Reaparecimento individual:** todos os mercenários, inclusive o chefe, voltam **120 segundos depois da própria morte**. Cada um tem um cronômetro separado; não é necessário eliminar o acampamento inteiro. O retorno restaura a vida e permite uma nova recompensa por uma nova derrota. O tempo avança com a simulação da partida. Acampamentos conhecidos mostram seu estado atual e o retorno quando estão visíveis; a neblina preserva apenas a última informação observada fora da visão. Construções não podem ocupar a área de retorno.
 
 ## Ordens da fronteira
 
@@ -42,6 +66,8 @@ São facções fictícias, não povos ou religiões reais. Todas podem recrutar 
 
 Cada comandante começa com 300 de ouro, 200 de madeira, quatro trabalhadores, um soldado e uma cidadela. Selecione trabalhadores e use **Minerar ouro** ou **Coletar madeira**; recursos próximos oferecem uma ação direta. O clique direito no recurso também funciona. O painel identifica a atividade e o destino, e ferramentas e partículas indicam a coleta efetiva. Trabalhadores creditam recursos diretamente no saldo, sem viagens de entrega.
 
+Quando a árvore ou jazida se esgota ou desaparece, o trabalhador procura outro recurso **do mesmo tipo, acessível e próximo da área de coleta**. Isso também vale para novos trabalhadores enviados pela bandeira da cidadela. Se não houver outro recurso alcançável na área, o painel informa o impedimento e a ordem aguarda; o trabalhador não atravessa o mapa procurando recursos. Uma ordem manual de parar, mover ou reparar interrompe essa busca automática.
+
 - **Cidadela:** recruta trabalhadores.
 - **Quartel I:** recruta soldados. **Quartel II:** também libera arqueiros. **Quartel III:** também libera curadores e treinamento coletivo. Curadores recuperam automaticamente a vida de unidades aliadas próximas.
 - **Torre:** defesa automática com ataques visíveis.
@@ -54,13 +80,43 @@ Há até 65 entidades por comandante, incluindo construções e recrutamentos pe
 
 Ao selecionar uma construção própria, o painel mostra a **fila na ordem dos pedidos**. O primeiro recruta aparece **em produção**, com barra de progresso, percentual e tempo restante; cada pedido seguinte aparece **em espera**, inclusive quando são unidades do mesmo tipo. Ao concluir o primeiro, o próximo assume automaticamente seu lugar. Com saída bloqueada, o primeiro aparece **pronto, aguardando saída livre**, a 100%, e os demais continuam esperando. O prédio selecionado também exibe um resumo no mapa. Obras, evolução de prédios, pesquisas e treinamento coletivo mostram sua atividade e progresso no mesmo painel.
 
+**Recrutamento em conjunto:** selecione vários quartéis próprios e clique em Soldado para pedir **um soldado em cada quartel apto**. Por exemplo, três quartéis aptos recebem três pedidos, por 210 de ouro e 75 de madeira no total. O botão mostra a quantidade e o custo conjunto antes do clique. Quartéis em obra, em evolução, ocupados com treinamento, com fila cheia ou sem o nível necessário para aquele recruta são informados e ficam fora do pedido. Se faltar dinheiro ou população para o conjunto apto, o pedido inteiro é recusado, sem cobrança parcial. O painel mostra separadamente a fila de cada construção selecionada.
+
+O mesmo mecanismo atende trabalhadores nas cidadelas e máquinas de cerco nas oficinas. Heróis continuam sendo recrutados em **um Salão das Lendas por vez**, respeitando as escolhas e o limite de vagas. Evoluções, pesquisas e treinamento coletivo continuam exigindo uma construção selecionada individualmente.
+
 Trabalhadores podem **reparar construções próprias ou aliadas prontas** a **3 pontos de vida por segundo por trabalhador**, sem custo de recursos. Use o botão de reparo ou clique direito na construção danificada. O trabalhador se aproxima da borda, repara e para quando a vida fica completa; não reconstrói estruturas destruídas.
 
 O canto do campo mostra unidades **sem ação**, agrupadas por tipo. Clique em um grupo para selecioná-lo. Unidades caminhando, coletando, reparando ou em combate não entram nessa contagem. O painel diferencia aproximação, ataque efetivo e caminho bloqueado. Alvos visíveis recebem uma indicação quando seus atacantes estão selecionados.
 
+## Torres, fortificação e cerco
+
+Torres dão tempo para defender a base com tropas. O alcance foi ajustado para que um herói de arco não possa destruí-las sem receber resposta apenas por ficar no limite do próprio alcance.
+
+| Torre de nível I, sem bônus | Valor |
+| --- | ---: |
+| Custo | 150 de ouro e 110 de madeira |
+| Vida | 750 |
+| Dano por disparo | 32 |
+| Intervalo entre disparos | 1 segundo |
+| Alcance | 210 passos |
+
+Construções concluídas recebem **35% menos dano de ataques comuns e magias**. Obras ainda incompletas não recebem essa fortificação. A proteção soma seu efeito às pesquisas de armadura por multiplicação: as duas reduções são aplicadas uma após a outra.
+
+O **Aríete de Luz** continua sendo a resposta às defesas: ignora a fortificação, mantém dano dobrado contra estruturas e ataca de fora do alcance das torres. Por isso, quem investe em torres ainda precisa de tropas para proteger a base do cerco. Exércitos maiores também podem concentrar ataques para romper a defesa; uma torre isolada não torna a base invulnerável.
+
+## Bondes e habilidades em grupo
+
+Selecione suas unidades e use **Ctrl + 1–9** para guardar o bonde; aperte somente o número para selecioná-lo novamente. No Mac, também é possível salvar com Cmd. Os botões dos grupos mostram a tecla e a quantidade de integrantes vivos. O grupo pode ter doze unidades ou mais, respeitando o limite normal da partida. Recrutas novos só entram quando você atualiza o grupo; unidades mortas são removidas automaticamente.
+
+Ao selecionar um bonde com herói, as habilidades **Q, W e R** ficam disponíveis sem desfazer a seleção. Com dois heróis selecionados, use as opções do painel ou **Tab** para escolher qual deles conjura. Apenas o herói ativo recebe o comando da habilidade; os demais integrantes continuam selecionados. As ordens de movimento e ataque continuam valendo para o grupo.
+
+As teclas numéricas ficam reservadas aos bondes. Os itens podem ser usados pelos botões ou por **Alt + 1, 2 e 3**, no herói ativo. F1 continua selecionando um herói individualmente e alterna entre os dois quando houver dois vivos.
+
 ## Seis heróis e dezoito habilidades
 
-A escolha é permanente por partida, com **um herói vivo ou em treinamento por jogador**, mesmo com vários salões. Após morrer, é possível recrutar o mesmo herói; ele retorna com progressão e inventário iniciais.
+Clique no nome de uma lenda na entrada ou em **Conheça as lendas** no lobby para consultar sua ficha. Cada uma reúne história original deste mundo, função em combate, pontos fortes, fragilidades, rival favorável, rival desfavorável e habilidades Q/W/R. Os confrontos e os valores das habilidades são lidos das mesmas regras utilizadas pela partida. As histórias são interpretações de fantasia para o jogo, não relatos de crenças ou comunidades reais.
+
+A escolha é permanente por partida. Cada jogador começa com **uma vaga de herói** e pode liberar a segunda ao derrotar o Colosso da Pedra. O limite conta heróis vivos e pedidos em todas as filas de salões. As duas escolhas precisam ser de tipos diferentes, com apenas uma cópia de cada tipo viva ou em treinamento. Após morrer, é possível recrutar novamente um dos tipos escolhidos; ele retorna com experiência e inventário iniciais, mantendo o treinamento coletivo já conquistado.
 
 | Herói | Q | W | R · suprema |
 | --- | --- | --- | --- |
@@ -102,7 +158,7 @@ O treinamento beneficia todas as unidades atuais e futuras do jogador, preservan
 
 A **neblina de guerra é calculada pelo servidor**. Aliados compartilham visão e área explorada. Entidades adversárias ocultas não são enviadas ao navegador; dados privados e eventos fora da visão são filtrados. O minimapa obedece à mesma visão. Ao término da partida, o mapa fica revelado.
 
-O Vale das Três Pontes tem água, passagens, florestas, rochas e acampamentos neutros. A navegação procura rotas e respeita obstáculos. Acampamentos concedem recompensa uma única vez. Recursos conhecidos podem ser visitados para coleta mesmo fora da visão atual.
+Os três mapas têm terreno e passagens próprios. A navegação, as magias de deslocamento, a construção e a IA consultam o mapa da sala. Uma sala não altera o terreno das outras. Mercenários concedem recompensa uma vez por morte e voltam após dois minutos. Recursos conhecidos podem ser visitados para coleta mesmo fora da visão atual.
 
 Golpes, flechas e magias representam eventos confirmados pelo servidor. Ataques aplicam dano no instante da simulação; os efeitos visuais não calculam dano novamente. As magias têm partículas, ondas, raízes, vórtices, serpentes de luz, névoa e escudos. O áudio sintetizado é opcional e ativado por interação do jogador.
 
@@ -117,10 +173,11 @@ Golpes, flechas e magias representam eventos confirmados pelo servidor. Ataques 
 | Avançar atacando | A e clique no destino, com unidades selecionadas. |
 | Parar | X. |
 | Magias do herói selecionado | Q, W e R; clique no alvo quando exigido. |
-| Consumir itens | 1, 2 e 3, com o herói selecionado. |
-| Selecionar o próprio herói | F1. |
-| Grupos de controle | Ctrl + 4–9 para guardar; 4–9 para selecionar. |
-| Câmera | Setas, bordas ou arraste com botão do meio. WASD quando não estiver usando teclas de ações. |
+| Consumir itens | Alt + 1, 2 e 3, ou os botões do herói ativo. |
+| Selecionar o próprio herói / alternar entre dois heróis | F1. |
+| Alternar o herói ativo dentro do bonde | Tab ou opções de herói no painel. |
+| Grupos de controle | Ctrl/Cmd + 1–9 para guardar; 1–9 para selecionar. |
+| Câmera | Setas, bordas ou arraste com botão do meio. WASD não move a câmera. |
 | Centralizar cidadela / zoom | Espaço / roda do mouse. |
 | Cancelar alvo ou construção | Esc ou clique direito. |
 
@@ -145,17 +202,28 @@ O repositório conserva `render.yaml` e `Dockerfile`. No Render: runtime Node, b
 npm test
 ```
 
-A suíte cobre regras, equipes, fog, magia, inventário, pesquisa, território, segurança HTTP e partidas com múltiplos clientes. Os testes de cliente executam os manipuladores reais com DOM/Canvas simulados; isso não substitui uma revisão completa do layout em navegador. Os duelos automatizados verificam os confrontos básicos dos heróis em condições controladas, sem provar equilíbrio de partidas com exércitos e habilidades.
+A suíte cobre regras, equipes, fog, magia, inventário, pesquisa, território, segurança HTTP e partidas com múltiplos clientes. Também verifica os três terrenos, sorteio de bases, salas simultâneas com mapas diferentes, retorno individual de mercenários, esquiva do chefe e recrutamento de dois heróis sem duplicação. Os testes de cliente executam os manipuladores reais com DOM/Canvas simulados; isso não substitui uma revisão completa do layout em navegador. Os duelos automatizados verificam os confrontos básicos dos heróis em condições controladas, sem provar equilíbrio de partidas com exércitos e habilidades.
 
 - `game.js`: ordens, produção, economia, atividades e combate.
 - `navigation.js`: aproximação, rotas, passagem de saída e colocação segura.
 - `ai.js`, `public/ai-config.js`: estratégia e dificuldades das máquinas.
 - `match.js`: salão, modos, equipes, recursos, vitória e snapshots com visão individual.
+- `camps.js`, `public/camp-config.js`: mercenários, recompensas, chefe e retorno individual.
+- `public/hero-roster.js`: escolhas e limite de heróis, incluindo a segunda vaga.
+- `public/recruitment.js`: quantidade, impedimentos e custo total do recrutamento em conjunto.
+- `public/hero-guide.js`: histórias, perfis de combate e consulta das seis lendas.
 - `powers.js`: habilidades, estados, itens, pesquisas e experiência.
 - `public/rules.js`, `legends.js`, `match-config.js`, `terrain.js`: dados e regras compartilhados.
 - `public/client.js`: entrada, interface, seleção, câmera e desenho.
-- `public/scene-art.js`, `spell-effects.js`, `combat-effects.js`, `audio.js`: arte, efeitos e som.
+- `public/scene-art.js`, `neutral-art.js`, `spell-effects.js`, `combat-effects.js`, `audio.js`: arte, efeitos e som.
 - `public/assets/`: arte original gerada para o jogo e prompts de produção.
 - `server.js`: transporte autenticado, arquivos públicos e limites.
 
 Esta é uma experiência original em 2D, não uma reprodução de Warcraft. Ainda não inclui campanha cinematográfica, editor de mapas, partidas salvas, replay ou unidades aéreas. O foco desta versão é uma partida completa de estratégia entre amigos com os modos descritos acima. Consulte [CREDITOS.md](CREDITOS.md) para referências culturais e autoria visual.
+
+
+## Encerramento de salas — correção na entrega 0.8.0
+
+Voltar ao início depois da partida e Sair da sala notificam o servidor por /api/leave e interrompem a conexão. Sair no meio da batalha equivale a render-se. A sala é removida quando o último participante humano sai explicitamente, mesmo que ainda existam máquinas. Fechar a aba ou perder a conexão reserva a sessão por até 90 segundos para reconexão; sem retorno, a sala é removida. Resultados permanecem disponíveis por até cinco minutos e são removidos assim que ninguém os estiver vendo. A limpeza também é executada antes de criar uma nova sala.
+
+O limite de três salas por endereço de conexão foi retirado porque o proxy do Render pode compartilhar esse endereço entre visitantes. Permanecem o limite global de 30 salas e os limites de criação por minuto e de conexões. A correção não confia em cabeçalhos de IP enviados pelo cliente. Esta edição preserva a identificação 0.8.0 fornecida no ZIP.

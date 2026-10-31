@@ -1,12 +1,15 @@
 import {terrainBlocked} from './public/terrain.js';
-import {walk,findProductionExit,planBuildingPlacement,findSafeSpawn,invalidateNavigation} from './navigation.js';
+import {walk,findProductionExit,planBuildingPlacement,findSafeSpawn,invalidateNavigation,findReachableTarget} from './navigation.js';
 import {botTurn} from './ai.js';
+import {initializeCamps,updateCamps} from './camps.js';
+import {registerHeroChoice} from './public/hero-roster.js';
+import {planRecruitment} from './public/recruitment.js';
 import {createRoom,addCommander,configureMatch,beginMatch,snapshotFor,canSee,updateVictory} from './match.js';
 import {FACTIONS} from './public/legends.js';
 import {initializeHero,damageEntity,castAbility,buyItem,useItem,startResearch,startTroopUpgrade,tickPowers,rewardDefeated,emitSpell} from './powers.js';
 import {
   WORLD, COST, STATS, HERO_TYPES, MAX_LEVEL, entityStats, heroMultiplier,
-  upgradeCost, upgradeDuration, trainDuration, placementError, allied, trainingError
+  upgradeCost, upgradeDuration, trainDuration, placementError, allied
 } from './public/rules.js';
 export {WORLD, COST, STATS} from './public/rules.js';
 
@@ -15,7 +18,49 @@ const EVENT_LIFETIME = 1.2;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const point = a => Number.isFinite(a.x) && Number.isFinite(a.y) && a.x >= 20 && a.x <= WORLD - 20 && a.y >= 20 && a.y <= WORLD - 20;
 const population = (r, p) => r.entities.filter(e => e.owner === p.id).reduce((n, e) => n + 1 + e.queue.length, 0);
-const heroPresent = (r, p) => r.entities.some(e => e.owner === p.id && (STATS[e.type].hero || e.queue.some(type => STATS[type].hero)));
+const gatherSearches = new WeakMap();
+const GATHER_SEARCH_RADIUS = 450;
+
+function gatherOrder(resource) {
+  return {type:'gather',target:resource.id,resourceType:resource.type,origin:{x:resource.x,y:resource.y}};
+}
+
+function nextGatherResource(r, worker, dt) {
+  const order = worker.order;
+  let current = r.resources.find(resource => resource.id === order.target);
+  // Retain intent before a depleted resource is removed from the world array.
+  if (current) {order.resourceType ??= current.type; order.origin ??= {x:current.x,y:current.y};}
+  if (current?.amount > 0) return current;
+  let previous = gatherSearches.get(order);
+  const resourceType = order.resourceType;
+  const origin = order.origin || worker;
+  // A distant manual order or rally still authorizes the trip to this area
+  // even if its original tree disappears before the worker gets there.
+  if (previous?.approachingOrigin || distance(worker,origin) > GATHER_SEARCH_RADIUS) {
+    const status=advance(r,worker,origin,dt,120,{resourceType});
+    if (status!=='arrived') {gatherSearches.set(order,{approachingOrigin:true});return null;}
+    gatherSearches.delete(order);previous=null;
+  }
+  const waiting = () => {
+    worker.activity = {type:'blocked',resourceType,reasonCode:'resource-unavailable',
+      reason:resourceType==='wood'?'Sem madeira acessível por perto. Escolha outra árvore.':'Sem ouro acessível por perto. Escolha outra jazida.'};
+  };
+  if (previous?.nextSearchAt > r.time) {waiting(); return null;}
+  const candidates = r.resources.filter(resource => resource.type === resourceType && resource.amount > 0 &&
+    distance(origin, resource) <= GATHER_SEARCH_RADIUS)
+    .sort((a,b) => distance(worker,a)-distance(worker,b));
+  const search = findReachableTarget(r, worker, candidates, 28, 650);
+  if (search.target) {
+    current = search.target;
+    order.target = current.id;
+    gatherSearches.delete(order);
+    return current;
+  }
+  // Budget exhaustion is retried next tick; a completed empty search waits 2 s.
+  if (search.deferred) worker.activity = {type:'blocked',resourceType,reason:'Procurando outro recurso acessível.'};
+  else {gatherSearches.set(order,{nextSearchAt:r.time+2}); waiting();}
+  return null;
+}
 
 export const room=createRoom;
 export const addPlayer=addCommander;
@@ -41,7 +86,7 @@ export function spawn(r, p, type, x, y) {
   return e;
 }
 
-export function start(r,p,practice=false){beginMatch(r,p,practice,spawn);}
+export function start(r,p,practice=false){beginMatch(r,p,practice,spawn);initializeCamps(r,spawn);}
 
 function pay(p, cost) {
   if (!cost || p.gold < cost[0] || p.wood < cost[1]) throw Error('Recursos insuficientes.');
@@ -70,26 +115,20 @@ export function command(r, p, a) {
       if(!['base','barracks','hall','workshop'].includes(e.type))throw Error('Selecione uma construção produtora.');
       const resource=a.target===undefined?null:r.resources.find(resource=>resource.id===a.target&&resource.amount>0);
       if(a.target!==undefined&&!resource)throw Error('Escolha uma jazida ou árvore com recursos disponíveis.');
-      if(r.mapId&&terrainBlocked(a.x,a.y))throw Error('Ponto de encontro bloqueado.');
+      if(r.mapId&&terrainBlocked(a.x,a.y,10,r.mapId))throw Error('Ponto de encontro bloqueado.');
       if(r.entities.some(b=>STATS[b.type].building&&b.hp>0&&distance(b,a)<48))throw Error('Marque a bandeira fora das construções.');
-      e.rally=resource&&e.type==='base'?{type:'gather',target:resource.id,x:resource.x,y:resource.y}:{type:'move',x:a.x,y:a.y};
+      e.rally=resource&&e.type==='base'?{type:'gather',target:resource.id,resourceType:resource.type,x:resource.x,y:resource.y}:{type:'move',x:a.x,y:a.y};
     }
     return;
   }
 
   if (a.type === 'train') {
-    const b = own[0];
-    const hero = HERO_TYPES.includes(a.unit);
-    if(a.ids.length!==1||own.length!==1)throw Error('Selecione uma única construção sua para recrutar.');
-    const error=trainingError(r,p.id,b,a.unit);
-    if(error)throw Error(error);
-    if (hero && p.heroType && p.heroType !== a.unit) throw Error('Você já escolheu seu herói para esta partida. Só pode recrutar novamente o mesmo herói.');
-    if (hero && heroPresent(r, p)) throw Error('Você só pode ter um herói vivo ou na fila.');
-    if (b.queue.length >= 5 || population(r, p) >= MAX_POPULATION) throw Error('Limite de unidades ou fila atingido.');
-    pay(p, COST[a.unit]);
-    if (hero) p.heroType = a.unit;
-    b.queue.push(a.unit);
-    return;
+    const plan=planRecruitment(r,p.id,a.ids,a.unit);
+    if(plan.error)throw Error(plan.error);
+    pay(p,plan.cost);
+    if(HERO_TYPES.includes(a.unit))registerHeroChoice(p,a.unit);
+    for(const building of plan.buildings)building.queue.push(a.unit);
+    return {trainedIds:plan.buildings.map(building=>building.id),skipped:plan.skipped,count:plan.count,cost:plan.cost};
   }
 
   if (a.type === 'build') {
@@ -141,7 +180,7 @@ export function command(r, p, a) {
     }
     if (a.type === 'gather' && e.type === 'worker') {
       const t = r.resources.find(t => t.id === a.target && t.amount > 0);
-      if (t) {e.order = {type: 'gather', target: t.id};e.activity={type:distance(e,t)<=28?'gathering':'moving',target:t.id,resourceType:t.type};}
+      if (t) {e.order = gatherOrder(t);e.activity={type:distance(e,t)<=28?'gathering':'moving',target:t.id,resourceType:t.type};}
     }
   }
 }
@@ -166,7 +205,7 @@ function advance(r,e,target,dt,reach=0,details={},clearOrder=false){
 export function step(r, dt = .1) {
   if (r.phase !== 'playing') return;
   r.tick++;
-  r.time += dt;r.navigationBudget=12;
+  r.time += dt;r.navigationBudget=12;r.resourceSearchBudget=4;
   tickPowers(r,dt);
   r.combatEvents = r.combatEvents.filter(event => r.time - event.at <= EVENT_LIFETIME);
   if (r.tick % 20 === 0) for (const p of r.players.filter(p => p.bot && !p.defeated)) botTurn(r, p, {command});
@@ -208,13 +247,15 @@ export function step(r, dt = .1) {
           e.queue.shift();
           if(e.rally){
             const resource=e.rally.type==='gather'&&produced.type==='worker'?r.resources.find(resource=>resource.id===e.rally.target&&resource.amount>0):null;
-            produced.order=resource?{type:'gather',target:resource.id}:{type:'move',x:e.rally.x,y:e.rally.y};
+            const collecting=e.rally.type==='gather'&&produced.type==='worker';
+            produced.order=collecting?{type:'gather',target:e.rally.target,resourceType:resource?.type||e.rally.resourceType,origin:{x:e.rally.x,y:e.rally.y}}:{type:'move',x:e.rally.x,y:e.rally.y};
             produced.activity={type:'moving',...(resource?{target:resource.id,resourceType:resource.type}:{})};
           }
           e.progress=0;
         }
       }
     }
+    if(e.boss&&Number.isFinite(e.quakeAt)){e.activity={type:'casting'};continue;}
     const camp=e.owner==='neutral'?r.camps.find(c=>c.id===e.camp):null;
     if(camp&&distance(e,camp)>170){advance(r,e,camp,dt,35);continue;}
     if(e.type==='healer'){
@@ -224,8 +265,8 @@ export function step(r, dt = .1) {
     }
     let target;
     if (e.order?.type === 'gather') {
-      const resource = r.resources.find(t => t.id === e.order.target && t.amount > 0);
-      if (!resource) { e.order = null; continue; }
+      const resource = nextGatherResource(r,e,dt);
+      if (!resource) continue;
       if (distance(e, resource) > 28) advance(r,e,resource,dt,28,{target:resource.id,resourceType:resource.type});
       if(distance(e,resource)<=28+1e-9){
         const take = Math.min(resource.amount, s.gather * dt*(resource.type==='wood'?1+(FACTIONS[e.faction]?.woodBonus||0):1));
@@ -287,13 +328,7 @@ export function step(r, dt = .1) {
   r.combatEvents = r.combatEvents.slice(-512);
   for (const [target,damage,source,event] of hits){event.damage=damageEntity(r,source,target,damage);event.blocked=Math.max(0,damage-event.damage);}
   rewardDefeated(r);
-  if(r.mapId)for(const camp of r.camps){
-   if(camp.cleared||r.entities.some(e=>e.camp===camp.id&&e.hp>0))continue;
-   camp.cleared=true;
-   const event=[...r.combatEvents].reverse().find(event=>r.entities.some(e=>e.id===event.targetId&&e.camp===camp.id)&&r.players.some(p=>p.id===event.owner));
-   const defeatedGuard=r.entities.find(e=>e.camp===camp.id&&e.lastHitOwner&&r.players.some(p=>p.id===e.lastHitOwner));
-   const player=r.players.find(p=>p.id===(event?.owner||defeatedGuard?.lastHitOwner));if(player){player.gold+=camp.reward;camp.claimedBy=player.id;}
-  }
+  updateCamps(r,spawn);
 
   r.entities = r.entities.filter(e => e.hp > 0);
   for (const p of r.players) if (!p.defeated && !r.entities.some(e => e.owner === p.id && e.type === 'base')) defeat(r, p);

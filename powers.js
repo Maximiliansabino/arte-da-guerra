@@ -1,5 +1,5 @@
 import {ABILITIES, HERO_ABILITIES, ITEMS, RESEARCH, heroLevelFromXP, researchCost} from './public/legends.js';
-import {STATS, entityStats, heroMultiplier, allied, WORLD, collectiveUpgradeCost, collectiveUpgradeDuration, collectiveUpgradeError, combatResearchError} from './public/rules.js';
+import {STATS, entityStats, heroMultiplier, allied, WORLD, structureDamageMultiplier, collectiveUpgradeCost, collectiveUpgradeDuration, collectiveUpgradeError, combatResearchError} from './public/rules.js';
 import {terrainBlocked, segmentClear} from './public/terrain.js';
 import {canSee} from './match.js';
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -12,11 +12,12 @@ export function initializeHero(e) {
 }
 export function damageEntity(r,source,target,amount) {
   if(target.hp<=0||!Number.isFinite(amount)||amount<=0||allied(r,source.owner,target.owner))return 0;
-  const adjusted=amount*(1-Math.min(.5,entityStats(target).armor||0));
+  const adjusted=amount*structureDamageMultiplier(source,target)*(1-Math.min(.5,entityStats(target).armor||0));
   const shield=target.shieldUntil>r.time?Math.min(target.shield||0,adjusted):0;
   target.shield=Math.max(0,(target.shield||0)-shield);
   const damage=adjusted-shield;
-  target.hp-=damage;target.lastHitOwner=source.owner;target.lastHitId=source.id;
+  target.hp-=damage;
+  if(damage>0){target.lastHitOwner=source.owner;target.lastHitId=source.id;if(target.hp<=0)target.diedAt=r.time;}
   return damage;
 }
 export function emitSpell(r,e,ability,to,overrides={}) {
@@ -52,7 +53,7 @@ export function castAbility(r,p,e,a) {
   if(!validPoint(to)||distance(e,to)>skill.range+.01&&skill.target!=='self')throw Error('Destino de magia inválido ou fora de alcance.');
   if(skill.target!=='self'&&!canSee(r,p.id,to))throw Error('Escolha um ponto visível para sua equipe.');
   if(skill.kind==='blink'){
-    if(r.mapId&&(terrainBlocked(to.x,to.y,16)||!segmentClear(e,to,terrainBlocked)))throw Error('O vento não atravessa obstáculos ou o rio.');
+    if(r.mapId&&(terrainBlocked(to.x,to.y,16,r.mapId)||!segmentClear(e,to,(x,y)=>terrainBlocked(x,y,10,r.mapId))))throw Error('O vento não atravessa obstáculos ou o rio.');
     if(r.entities.some(b=>b.hp>0&&STATS[b.type].building&&distance(b,to)<55))throw Error('Destino ocupado por uma construção.');
   }
   e.mana-=skill.mana;e.cooldowns??={};e.cooldowns[a.ability]=skill.cooldown;
@@ -153,7 +154,7 @@ export function rewardDefeated(r) {
     const killer=r.players.find(p=>p.id===defeated.lastHitOwner);
     if(!killer||allied(r,killer.id,defeated.owner))continue;
     const heroes=r.entities.filter(e=>e.hp>0&&STATS[e.type].hero&&allied(r,killer.id,e.owner)&&distance(e,defeated)<=350);
-    const reward=STATS[defeated.type].hero?120:defeated.type==='guardian'?80:STATS[defeated.type].building?100:40;
+    const reward=Number.isFinite(defeated.xpReward)?defeated.xpReward:STATS[defeated.type].hero?120:defeated.type==='guardian'?80:STATS[defeated.type].building?100:40;
     for(const e of heroes){
       e.xp+=Math.round(reward/Math.max(1,heroes.length));
       const level=heroLevelFromXP(e.xp);
