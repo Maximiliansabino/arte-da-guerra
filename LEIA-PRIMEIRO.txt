@@ -1,4 +1,4 @@
-ARTE DA GUERRA - LENDAS DA FRONTEIRA 0.5.1
+ARTE DA GUERRA - LENDAS DA FRONTEIRA 0.8.0
 
 Este download inclui o jogo e o servidor local. Ainda nao e um instalador .exe.
 Requer Node.js 22 ou superior: https://nodejs.org/
@@ -11,6 +11,16 @@ WINDOWS
 5. Escolha treinar contra uma maquina ou criar uma sala com amigos.
 6. No salao, escolha duplas, todos contra todos ou ate 4 amigos contra 4 maquinas.
 7. Escolha a dificuldade das maquinas: facil, normal ou dificil.
+8. Escolha o mapa. As posicoes iniciais sao sorteadas ao iniciar a partida.
+9. Derrote o Colosso da Pedra para liberar a segunda vaga de heroi.
+10. Selecione seu bonde e use Ctrl + 1 a 9 para salvar; so o numero o seleciona.
+11. Use Q, W e R com o heroi dentro do bonde. Tab alterna entre dois herois.
+12. Os itens agora usam Alt + 1, 2 e 3, ou os botoes na tela.
+13. Use as setas, bordas ou botao do meio para mover a camera. WASD nao move.
+14. Selecione varios quarteis e compre uma unidade para pedir uma em cada
+    quartel apto. O botao mostra a quantidade e o custo total.
+15. Clique nos nomes dos herois ou em Conheca as lendas para consultar as fichas.
+16. Confira a versao em execucao no cabecalho e no lobby.
 
 OUTROS SISTEMAS
 Abra um terminal nesta pasta e execute: npm start

@@ -45,6 +45,8 @@ test('HTTP/SSE: quatro amigos compartilham atividade e bandeira de coleta; dific
     for (let i = 1; i < 4; i++) sessions.push((await post('join', {name: `Amigo ${i + 1}`, code: host.code})).data);
     assert.equal((await post('lobby', {action: 'difficulty', difficulty: 'easy'}, sessions[1])).status, 400);
     assert.equal((await post('lobby', {action: 'difficulty', difficulty: 'hard'}, host)).status, 200);
+    assert.equal((await post('lobby', {action:'map', mapId:'crystal-ridge'}, sessions[1])).status, 400);
+    assert.equal((await post('lobby', {action:'map', mapId:'crystal-ridge'}, host)).status, 200);
     const config = await fetch(base + '/ai-config.js');
     assert.equal(config.status, 200);
     assert.match(config.headers.get('content-type'), /javascript/);
@@ -56,6 +58,16 @@ test('HTTP/SSE: quatro amigos compartilham atividade e bandeira de coleta; dific
     const tick = [...states[0].keys()].find(t => t >= 2 && states.every(view => view.has(t)));
     const state = states[0].get(tick);
     assert.equal(state.mode, 'coop');
+    assert.equal(state.mapId, 'crystal-ridge');
+    assert.equal(state.startingPositions.length, 8);
+    assert.equal(new Set(state.startingPositions.map(p=>`${p.x},${p.y}`)).size, 8);
+    const humanSide=state.startingPositions.find(p=>p.slot===0).x;
+    for(const player of state.players){
+      const point=state.startingPositions.find(p=>p.slot===player.slot);
+      assert.equal(point.x===humanSide,player.team===0);
+      const home=state.entities.find(e=>e.owner===player.id&&e.type==='base');
+      if(home){assert.equal(home.x,point.x);assert.equal(home.y,point.y);}
+    }
     assert.equal(state.difficulty, 'hard');
     assert.equal((await post('lobby', {action: 'difficulty', difficulty: 'easy'}, host)).status, 400);
     assert.equal(state.players.length, 8);

@@ -33,10 +33,11 @@ test('cooperativo comporta quatro amigos e quatro máquinas, com bases e recurso
   assert.equal(r.players.filter(p => p.team === 1 && p.bot).length, 4);
   assert.equal(new Set(r.players.map(p => p.slot)).size, 8);
   assert.equal(r.entities.filter(e => e.type === 'base').length, 8);
+  const firstTeamSide = r.entities.find(e => e.owner === p.id && e.type === 'base').x < 900;
   for (const member of r.players) {
     assert.equal(member.gold, 300); assert.equal(member.wood, 200);
     const base = r.entities.find(e => e.owner === member.id && e.type === 'base');
-    assert.equal(base.x < 900, member.team === 0);
+    assert.equal(base.x < 900, member.team === 0 ? firstTeamSide : !firstTeamSide);
     const worker = r.entities.find(e => e.owner === member.id && e.type === 'worker');
     assert.equal(terrainBlocked(base.x, base.y), false);
     assert.equal(terrainBlocked(worker.x, worker.y), false);
@@ -49,7 +50,7 @@ test('cooperativo comporta quatro amigos e quatro máquinas, com bases e recurso
     assert.ok(source.x >= 20 && source.y >= 20 && source.x <= 1780 && source.y <= 1780);
     assert.equal(terrainBlocked(source.x, source.y, 20), false);
   }
-  assert.equal(r.camps.length, 4);
+  assert.equal(r.camps.length, 0, 'o início da simulação inicializa os acampamentos após criar as bases');
 });
 
 test('treino solo gera exatamente um oponente, e duplas completa apenas quatro vagas', () => {

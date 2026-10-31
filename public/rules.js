@@ -1,8 +1,10 @@
-import {terrainBlocked} from './terrain.js';
+import {constructionTerrainError} from './terrain.js';
 import {FACTIONS, HERO_ABILITIES, ITEMS} from './legends.js';
 // Shared presentation data and deterministic rules. Only the server applies them.
 export const WORLD = 1800;
 export const MAX_LEVEL = 3;
+// Fortification slows small raids; siege keeps its range and anti-building role.
+export const STRUCTURE_DEFENSE = {ordinaryDamageTaken: .65};
 export const BUILD_RULES = {
   workerRange: 250, linkRange: 300, enemyBaseRadius: 360,
   minSpacing: 95, resourceSpacing: 55
@@ -19,11 +21,14 @@ export const HEROES = {
 export const BUILDING_TYPES = ['base', 'barracks', 'tower', 'hall', 'workshop'];
 export const COST = {
   worker: [50, 0], soldier: [70, 25], archer: [85, 40],
-  barracks: [140, 100], tower: [100, 80], hall: [180, 140], workshop:[200,160], healer:[100,65], siege:[180,120],
+  barracks: [140, 100], tower: [150, 110], hall: [180, 140], workshop:[200,160], healer:[100,65], siege:[180,120],
   ...Object.fromEntries(HERO_TYPES.map(type => [type, [220, 140]]))
 };
 export const STATS = {
   guardian: {hp:260,speed:70,damage:15,range:28,cooldown:1.1,attackKind:'melee'},
+  sentinel: {hp:540,speed:75,damage:26,range:145,cooldown:1.2,attackKind:'bolt'},
+  veteran: {hp:900,speed:76,damage:42,range:32,cooldown:1.1,attackKind:'melee'},
+  colossus: {hp:3200,speed:58,damage:75,range:95,cooldown:1.6,attackKind:'bolt'},
   worker: {hp: 90, speed: 85, damage: 4, range: 23, cooldown: 1, gather: 7, attackKind: 'melee'},
   soldier: {hp: 230, speed: 95, damage: 19, range: 27, cooldown: .8, attackKind: 'melee'},
   archer: {hp: 125, speed: 100, damage: 14, range: 150, cooldown: 1, attackKind: 'arrow'},
@@ -32,7 +37,7 @@ export const STATS = {
   workshop:{hp:850,building:true},
   base: {hp: 1800, building: true},
   barracks: {hp: 750, building: true},
-  tower: {hp: 550, building: true, damage: 23, range: 200, cooldown: 1.1, attackKind: 'arrow'},
+  tower: {hp: 750, building: true, damage: 32, range: 210, cooldown: 1, attackKind: 'arrow'},
   hall: {hp: 850, building: true},
   bastion: {hp: 560, speed: 86, damage: 31, range: 30, cooldown: 1, hero: true, attackKind: 'melee'},
   shade: {hp: 390, speed: 116, damage: 26, range: 28, cooldown: .6, hero: true, attackKind: 'melee'},
@@ -42,11 +47,13 @@ export const STATS = {
   warden: {hp: 500, speed: 94, damage: 32, range: 85, cooldown: 1, hero: true, attackKind: 'bolt'}
 };
 export const LABELS = {
+  sentinel: 'Sentinela Cristalina', veteran: 'Veterano da Serra', colossus: 'Colosso da Pedra',
   guardian: 'Guardião neutro', worker: 'Trabalhador', soldier: 'Soldado', archer: 'Arqueiro', base: 'Cidadela',
   barracks: 'Quartel', tower: 'Torre', hall: 'Salão das Lendas', workshop:'Oficina Encantada', healer:'Cuidador das Fontes', siege:'Aríete de Luz',
   ...Object.fromEntries(HERO_TYPES.map(type => [type, HEROES[type].name]))
 };
 export const ICONS = {
+  sentinel: '◇', veteran: '◆', colossus: '⬟',
   worker: '⚒', soldier: '⚔', archer: '➶', base: '♜', barracks: '⚑', tower: '♖', hall: '✦', workshop:'⚒', healer:'✚', siege:'◈', guardian:'◆',
   ...Object.fromEntries(HERO_TYPES.map(type => [type, HEROES[type].icon]))
 };
@@ -63,10 +70,18 @@ export function entityStats(entity) {
   const faction=FACTIONS[entity.faction];
   if(stats.damage) stats.damage=Math.round(stats.damage*(1+(faction?.damageBonus||0)+.1*(entity.research?.weapons||0)))+(entity.inventory?.includes('charm')?ITEMS.charm.damage:0);
   stats.armor=.08*(entity.research?.armor||0);
+  stats.fortification=base.building&&!entity.construct?1-STRUCTURE_DEFENSE.ordinaryDamageTaken:0;
   if(stats.gather)stats.gather*=1+.15*(entity.research?.harvest||0);
   if(base.hero){stats.maxMana=150+heroic*20;stats.manaRegen=3*(1+(faction?.manaBonus||0));}
   stats.sight=(base.building?330:base.hero?320:250)*(1+(faction?.sightBonus||0));
   return stats;
+}
+
+// Applies to ordinary attacks and spells alike; works for detached DoT sources.
+// Unfinished construction remains vulnerable, preventing cheap tower rushes.
+export function structureDamageMultiplier(source, target) {
+  return STATS[target?.type]?.building && !target.construct && !STATS[source?.type]?.siege ?
+    STRUCTURE_DEFENSE.ordinaryDamageTaken : 1;
 }
 
 const UPGRADE_COST = {
@@ -149,8 +164,8 @@ export function connectedBuildings(state, ownerId) {
 export function placementError(state, ownerId, worker, point) {
   if (!worker || worker.owner !== ownerId || worker.type !== 'worker' || worker.hp <= 0) return 'Selecione um trabalhador seu.';
   if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y) || point.x < 20 || point.y < 20 || point.x > WORLD - 20 || point.y > WORLD - 20) return 'Escolha um local dentro do mapa.';
-  if(state.mapId&&[[-50,-50],[50,-50],[-50,50],[50,50],[0,0]].some(([dx,dy])=>terrainBlocked(point.x+dx,point.y+dy)))return 'Terreno bloqueado: construa fora da água, pontes, rochas e florestas.';
-  if(state.mapId&&Math.abs(point.x-900)<150)return 'Mantenha as pontes e suas entradas livres.';
+  const terrainError=constructionTerrainError(state.mapId,point);
+  if(terrainError)return terrainError;
   if (distance(worker, point) > BUILD_RULES.workerRange) return `Construa a até ${BUILD_RULES.workerRange} passos do trabalhador.`;
   if (state.entities.some(e => e.type === 'base' && !allied(state,e.owner,ownerId) && e.hp > 0 && distance(e, point) < BUILD_RULES.enemyBaseRadius)) return `Mantenha ${BUILD_RULES.enemyBaseRadius} passos das cidadelas inimigas.`;
   if (!connectedBuildings(state, ownerId).some(e => distance(e, point) <= BUILD_RULES.linkRange)) return `Construa a até ${BUILD_RULES.linkRange} passos de uma construção pronta ligada à sua cidadela.`;

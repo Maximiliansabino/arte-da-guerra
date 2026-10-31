@@ -1,0 +1,20 @@
+LENDAS DA FRONTEIRA — MERCENÁRIOS 0.7
+
+Arquivo final: mercenary-atlas-v07.png
+Criado com a ferramenta integrada de geração de imagens (image_gen).
+Imagem original RGBA, com fundo transparente, mantida sem edição de pixels.
+Atlas 2 × 2: guardião no alto à esquerda; sentinela no alto à direita;
+veterano embaixo à esquerda; colosso embaixo à direita.
+Os seres são personagens fictícios de fantasia, sem representar grupos
+étnicos, crenças ou religiões reais.
+
+PROMPT INICIAL
+Use case: stylized-concept.
+Asset type: one transparent PNG sprite atlas for a small original browser real-time strategy game, 2 columns by 2 rows.
+Primary request: create exactly FOUR original full-body neutral mercenary creatures as a polished cohesive set of game miniatures. Completely transparent background and transparent gutters, no scenery, no cards, no panels, no names, no letters or symbols, no watermark.
+Layout is critical: square image, four EQUAL SQUARE cells. Top-left: Vigia da Trilha, a compact living woodland sentinel made of bark and warm stone, moss shoulder patches, two legs, two arms, a short wooden spear and round weathered shield, tiny amber eyes, friendly fantasy menace. Top-right: Sentinela Cristalina, a slender floating blue-white quartz sentinel with faceted crystal armor, luminous cyan core and hands poised for a ranged magical bolt, sharp readable silhouette. Bottom-left: Veterano da Serra, a broad armored stone guardian with bronze-edged dark slate plates, a large angular shield and single heavy axe, scarred mineral helmet and amber visor, grounded powerful stance. Bottom-right: Colosso da Pedra, a monumental rock giant, huge boulder fists, layered granite shoulders, glowing golden fissures and radiant chest core, small moss patches and floating stone fragments close to its body; visually most imposing and broad, recognizable boss.
+Style: premium hand-painted fantasy RTS sprites, sculptural volumes, rich but controlled texture, clean strong outlines and bright readable edges, no photorealism, no cartoon emoji. Three-quarter frontal camera looking slightly down, consistent upper-left warm lighting, high contrast against grass. Original designs only, no recognizable existing video-game characters, no real religions or ethnic-group costumes.
+Composition: each entire creature and every weapon stays completely inside its own cell with at least 8 percent transparent safety margin. Center each creature horizontally in its cell; feet/bottom point align at 88 percent of its cell height. Each creature occupies approximately 75 percent of its cell height, with the boss broader rather than taller within the atlas; we will scale the boss larger in game. Exactly one figure per cell, no duplicate figures. Soft minimal contact shadow only, otherwise genuine alpha transparency.
+
+AJUSTE DE LAYOUT
+Edit this sprite atlas for precise game-engine cropping. Preserve the FOUR existing creature designs, textures, lighting, colors, poses, weapons and alpha transparency. Change ONLY layout and scale. Output a square atlas with EXACT equal 2x2 quadrants. Each creature must be centered in its own quadrant, with its ENTIRE silhouette including weapons, shadows, crystal sparkles and floating rock fragments contained inside the inner 76% of its quadrant. Leave a completely transparent margin of at least12% of each cell width on all four sides. In particular, the bottom two figures MUST become smaller and lower so neither touches or crosses the vertical centerline or horizontal centerline. There must be a broad empty transparent cross-shaped gutter separating the four creatures. Same cell order: wood guardian top left, blue crystal sentinel top right, armored axe veteran bottom left, giant glowing stone colossus bottom right. Align feet or bottom point at86% of each cell height. Equal cell sizes, no background, no dividers, no text, no additional figures.

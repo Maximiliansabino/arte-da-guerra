@@ -74,10 +74,22 @@ test('quatro clientes recebem ataques e evolução de cidadela compartilhados en
     }
     // Enemy IDs are hidden. Both opponents move to the known bridge and engage
     // automatically when they discover each other; allies share the encounter.
-    const fighters = [0,2];
-    for (const i of fighters) {
-      const soldier=first[i].entities.find(e=>e.owner===sessions[i].id&&e.type==='soldier');
-      assert.equal((await post('command',{type:'move',ids:[soldier.id],x:i===0?870:930,y:300},sessions[i])).status,200);
+    // Starting positions are shuffled. Pick one fighter from each alliance and
+    // the nearest outer bridge, keeping this combat test independent of slots.
+    const soldiers = first.map((state,i) => state.entities.find(e=>e.owner===sessions[i].id&&e.type==='soldier'));
+    const encounters = [];
+    for (const a of [0,1]) for (const b of [2,3]) for (const y of [300,1500]) for (const [left,right] of [[a,b],[b,a]]) {
+      encounters.push({left,right,y,distance:Math.hypot(soldiers[left].x-870,soldiers[left].y-y)+Math.hypot(soldiers[right].x-930,soldiers[right].y-y)});
+    }
+    const encounter = encounters.sort((a,b)=>a.distance-b.distance)[0];
+    // A diagonal route from another corner can cross the Colossus camp. Reach
+    // the outer corridor first, then enter the bridge along its clear axis.
+    const fighters=[encounter.left,encounter.right];
+    const approach=Object.fromEntries(fighters.map(i=>[i,{x:soldiers[i].x<900?350:1450,y:encounter.y}]));
+    for(const i of fighters)assert.equal((await post('command',{type:'move',ids:[soldiers[i].id],...approach[i]},sessions[i])).status,200);
+    await waitFor(()=>fighters.every(i=>{const soldier=latest[i].entities.find(e=>e.id===soldiers[i].id);return soldier&&Math.hypot(soldier.x-approach[i].x,soldier.y-approach[i].y)<30;}));
+    for (const [i,x] of [[encounter.left,870],[encounter.right,930]]) {
+      assert.equal((await post('command',{type:'move',ids:[soldiers[i].id],x,y:encounter.y},sessions[i])).status,200);
     }
     await waitFor(() => sessions.every((session,i) => {const p=latest[i].players.find(p=>p.id===session.id);return p.gold>=220&&p.wood>=140&&latest[i].entities.some(e=>e.owner===session.id&&e.type==='hall'&&!e.construct);}));
     for (let i = 0; i < 4; i++) {
@@ -96,7 +108,7 @@ test('quatro clientes recebem ataques e evolução de cidadela compartilhados en
     for (let i = 0; i < 4; i++) {
       assert.equal(latest[i].players.find(p=>p.id===sessions[i].id).heroType,HERO_TYPES[i]);
       const alliedIndex=i%2?i-1:i+1;assert.equal(latest[i].players.find(p=>p.id===sessions[alliedIndex].id).heroType,HERO_TYPES[alliedIndex]);
-      assert.ok(attacks[i].size > 0, 'todo jogador deve receber os ataques');
+      assert.ok(attacks[i].size > 0, `todo jogador deve receber os ataques; encontro ${JSON.stringify(encounter)}, soldados ${JSON.stringify(fighters.map(j=>latest[j].entities.find(e=>e.id===soldiers[j].id)||{id:soldiers[j].id,morto:true}))}`);
       assert.equal(latest[i].players.some(p => 'token' in p), false);
       const teammate=i%2?i-1:i+1;
       assert.deepEqual([...attacks[i].values()], [...attacks[teammate].values()]);

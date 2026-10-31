@@ -16,10 +16,10 @@ const terrainGrids = new Map();
 function makeNavigation(r, extraBuilding = null, ignored = new Set()) {
   const buildings = r.entities.filter(e => e.hp > 0 && STATS[e.type]?.building && !ignored.has(e.id));
   if (extraBuilding) buildings.push(extraBuilding);
-  const blocked = (x, y) => bounds(x, y) || (r.mapId && terrainBlocked(x, y, 10)) || buildings.some(b => (x - b.x) ** 2 + (y - b.y) ** 2 < BUILDING_RADIUS ** 2);
-  const terrainKey = !!r.mapId;
+  const blocked = (x, y) => bounds(x, y) || (r.mapId && terrainBlocked(x, y, 10, r.mapId)) || buildings.some(b => (x - b.x) ** 2 + (y - b.y) ** 2 < BUILDING_RADIUS ** 2);
+  const terrainKey = r.mapId || null;
   if (!terrainGrids.has(terrainKey)) terrainGrids.set(terrainKey, Uint8Array.from({length: COUNT}, (_, k) => {
-    const p = nodePoint(k); return terrainKey && terrainBlocked(p.x, p.y, 10) ? 1 : 0;
+    const p = nodePoint(k); return terrainKey && terrainBlocked(p.x, p.y, 10, terrainKey) ? 1 : 0;
   }));
   const grid = terrainGrids.get(terrainKey).slice();
   for (const b of buildings) {
@@ -35,7 +35,7 @@ function makeNavigation(r, extraBuilding = null, ignored = new Set()) {
 
 function navigation(r) {
   let cached = caches.get(r);
-  if (cached && cached.tick === r.tick && cached.entities === r.entities && cached.count === r.entities.length) return cached.nav;
+  if (cached && cached.tick === r.tick && cached.entities === r.entities && cached.count === r.entities.length && cached.mapId === r.mapId) return cached.nav;
   const signature = r.entities.filter(e => e.hp > 0 && STATS[e.type]?.building).map(e => `${e.id}:${e.x}:${e.y}`).join('|');
   const nav = cached?.signature === signature && cached.mapId === r.mapId ? cached.nav : makeNavigation(r);
   caches.set(r, {tick: r.tick, entities: r.entities, count: r.entities.length, signature, mapId: r.mapId, nav});
@@ -44,6 +44,43 @@ function navigation(r) {
 
 export function invalidateNavigation(r) {caches.delete(r);}
 export function isWalkable(r, point) {return valid(point) && !navigation(r).blocked(point.x, point.y);}
+
+/** Find a nearby reachable interaction target without moving the unit.
+ * A failed search shares the tick's pathfinding budget and visits only a
+ * bounded neighbourhood; callers can throttle retries when a forest runs out.
+ */
+export function findReachableTarget(r, from, candidates, reach = 28, maxTravel = 650) {
+  if (!valid(from) || !candidates.length) return {target:null, deferred:false};
+  const nav = navigation(r);
+  const direct = target => {
+    const end = endpoint(from, target, reach);
+    return distance(from, end) <= maxTravel && !nav.blocked(end.x, end.y) && segmentClear(from, end, nav.blocked);
+  };
+  if (direct(candidates[0])) return {target:candidates[0], deferred:false};
+  if ((r.navigationBudget !== undefined && r.navigationBudget <= 0) || r.resourceSearchBudget === 0) return {target:null, deferred:true};
+  if (r.navigationBudget !== undefined) r.navigationBudget--;
+  if (r.resourceSearchBudget !== undefined) r.resourceSearchBudget--;
+  const costs = new Float64Array(COUNT).fill(Infinity), queue = [];
+  for (const start of startsFor(nav, from)) {costs[start.key] = start.distance; queue.push(start.key);}
+  for (let i = 0; i < queue.length; i++) {
+    const key = queue[i], cost = costs[key] + CELL;
+    if (cost > maxTravel) continue;
+    for (const next of neighbours(nav, key)) if (cost < costs[next]) {costs[next] = cost; queue.push(next);}
+  }
+  for (const target of candidates) {
+    if (direct(target)) return {target, deferred:false};
+    const tx = Math.floor(target.x / CELL), ty = Math.floor(target.y / CELL), radius = Math.ceil(reach / CELL) + 2;
+    for (let y = Math.max(0, ty-radius); y <= Math.min(SIZE-1, ty+radius); y++) {
+      for (let x = Math.max(0, tx-radius); x <= Math.min(SIZE-1, tx+radius); x++) {
+        const key = y * SIZE + x;
+        if (!Number.isFinite(costs[key])) continue;
+        const node = nodePoint(key), end = endpoint(node, target, reach);
+        if (costs[key] + distance(node, end) <= maxTravel && !nav.blocked(end.x, end.y) && segmentClear(node, end, nav.blocked)) return {target, deferred:false};
+      }
+    }
+  }
+  return {target:null, deferred:false};
+}
 
 function startsFor(nav, point) {
   const sx = Math.floor(point.x / CELL), sy = Math.floor(point.y / CELL), starts = [];

@@ -1,5 +1,5 @@
 import {HERO_TYPES,HEROES,STATS} from './rules.js';
-import {MAP} from './terrain.js';
+import {getMap} from './terrain.js';
 const TAU=Math.PI*2;
 const hash=n=>{const value=Math.sin(n*127.1+311.7)*43758.5453;return value-Math.floor(value);};
 function polygon(ctx,points,fill,stroke){ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.stroke();}}
@@ -113,12 +113,25 @@ export function drawUnit(ctx,e,color,now=0){
 }
 export function drawAmbient(ctx,state,now=0){
  if(!state?.mapId)return;
+ const map=getMap(state.mapId);
  ctx.save();ctx.lineCap='round';
- for(let i=0;i<65;i++){
-  const y=(i*29+now/70)%1800;if(MAP.bridges.some(bridge=>Math.abs(y-bridge)<72))continue;
-  const x=850+hash(i+31)*98;ctx.globalAlpha=.08+hash(i)*.12;line(ctx,x,y,x+Math.sin(now/1300+i)*6,y+12,'#a9e2da',1);
+ if(map.river)for(let i=0;i<65;i++){
+  const y=(i*29+now/70)%1800;if(map.bridges.some(bridge=>Math.abs(y-bridge)<72))continue;
+  const x=map.river.x-map.river.width/2+10+hash(i+31)*(map.river.width-20);ctx.globalAlpha=.08+hash(i)*.12;line(ctx,x,y,x+Math.sin(now/1300+i)*6,y+12,'#a9e2da',1);
  }
- for(let i=0;i<22;i++){const x=300+hash(i+704)*1200,y=120+hash(i+314)*1560;if(Math.abs(x-900)<90)continue;ctx.globalAlpha=(.25+Math.sin(now/900+i)*.15);ellipse(ctx,x+Math.sin(now/1200+i)*5,y+Math.cos(now/1700+i)*7,1.3,1.3,'#e2eab7');}
+ for(const lake of map.lakes){
+  for(let i=0;i<14;i++){
+   const a=hash(i+12)*TAU,r=Math.sqrt(hash(i+71))*.82,x=lake.x+Math.cos(a)*lake.rx*r,y=lake.y+Math.sin(a)*lake.ry*r;
+   const ripple=(now/3200+i*.27)%1;ctx.globalAlpha=(1-ripple)*.28;ctx.strokeStyle='#bcf2e4';ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y,4+ripple*15,2+ripple*5,0,.2,Math.PI*1.6);ctx.stroke();
+  }
+ }
+ for(const o of map.obstacles){if(o.type!=='crystal')continue;ctx.globalAlpha=.35+Math.sin(now/1700+o.y)*.2;sparkle(ctx,o.x+o.r*.4,o.y-o.r*.8,3,map.theme.accent);}
+ for(let i=0;i<22;i++){
+  const x=300+hash(i+704)*1200,y=120+hash(i+314)*1560;
+  if(map.river&&Math.abs(x-map.river.x)<map.river.width/2+15)continue;
+  if(map.lakes.some(lake=>((x-lake.x)/lake.rx)**2+((y-lake.y)/lake.ry)**2<1))continue;
+  ctx.globalAlpha=.25+Math.sin(now/900+i)*.15;ellipse(ctx,x+Math.sin(now/1200+i)*5,y+Math.cos(now/1700+i)*7,1.3,1.3,map.theme.accent);
+ }
  ctx.restore();
 }
 export function createSceneArt(){ensureAtlas();return {drawHero,drawBuilding,drawUnit,drawAmbient};}

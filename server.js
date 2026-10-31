@@ -1,8 +1,11 @@
+import {createRoomLifecycle} from './room-lifecycle.js';
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {room,addPlayer,start,command,step,snapshot,configureLobby} from './game.js';
+const {version:gameVersion}=JSON.parse(await readFile(new URL('./package.json',import.meta.url),'utf8'));
 const rooms=new Map(),streams=new Map(),limits=new Map(),connections=new Map();
+const lifecycle=createRoomLifecycle(rooms,streams);
 // Hosts explícitos impedem que um domínio externo seja usado para acessar o servidor local.
 const publicHosts=new Set([process.env.RENDER_EXTERNAL_HOSTNAME,...(process.env.ALLOWED_HOSTS||'').split(',')].filter(Boolean).map(h=>h.trim().toLowerCase()));
 function allowedHost(host){
@@ -24,7 +27,7 @@ async function body(req){
  if(!data||typeof data!=='object'||Array.isArray(data))fail(400,'Solicitação inválida.');return data;
 }
 
-function auth(req,url){const r=rooms.get(url.searchParams.get('room'));const token=(req.headers.authorization||'').replace(/^Bearer /,'');const p=r?.players.find(p=>p.token===token);if(!p)throw Error('Sessão inválida. Entre novamente na sala.');r.touched=Date.now();return [r,p];}
+function auth(req,url){const r=rooms.get(url.searchParams.get('room'));const token=(req.headers.authorization||'').replace(/^Bearer /,'');const p=r?.players.find(p=>!p.left&&p.token===token);if(!p)throw Error('Sessão inválida. Entre novamente na sala.');r.touched=Date.now();return [r,p];}
 export const server=http.createServer(async(req,res)=>{
  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'");
  try{
@@ -36,38 +39,48 @@ export const server=http.createServer(async(req,res)=>{
   if(process.env.NODE_ENV==='production')res.setHeader('Strict-Transport-Security','max-age=31536000');
   if(req.method==='GET'&&url.pathname==='/health')return json(res,200,{ok:true});
   if(req.method==='POST'){
-   if(!['/api/create','/api/join','/api/start','/api/command','/api/lobby'].includes(url.pathname))return json(res,404,{error:'Não encontrado.'});
+   if(!['/api/create','/api/join','/api/start','/api/command','/api/lobby','/api/leave'].includes(url.pathname))return json(res,404,{error:'Não encontrado.'});
    // Limitar antes de ler o corpo reduz o custo de pedidos não autenticados.
    let session;
    if(url.pathname==='/api/create')rate(`create:${ip}`,6,60000);
    else if(url.pathname==='/api/join')rate(`join:${ip}`,30,60000);
    else{session=auth(req,url);rate(session[1].id,20);}
    const a=await body(req);
-   if(url.pathname==='/api/create'){if(rooms.size>=30||[...rooms.values()].filter(r=>r.creator===ip).length>=3)throw Error('Servidor cheio. Tente mais tarde.');const r=room(undefined,true);r.creator=ip;rooms.set(r.code,r);const p=addPlayer(r,a.name);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});}
+   if(url.pathname==='/api/create'){lifecycle.sweep();if(rooms.size>=30)fail(503,'O servidor atingiu o limite de 30 salas ativas. Tente mais tarde.');const r=room(undefined,true);r.emptySince=Date.now();rooms.set(r.code,r);const p=addPlayer(r,a.name);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});}
    if(url.pathname==='/api/join'){const r=rooms.get(String(a.code).trim().toLowerCase());if(!r)throw Error('Sala não encontrada. Confira o convite.');const p=addPlayer(r,a.name);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});}
    const [r,p]=session;
+   if(url.pathname==='/api/leave'){
+    if(r.phase==='playing'&&!p.defeated)command(r,p,{type:'surrender'});
+    lifecycle.leave(r,p);if(rooms.has(r.code))broadcast(r);
+    return json(res,200,{ok:true});
+   }
+   let result;
    if(url.pathname==='/api/lobby')configureLobby(r,p,a);
    else if(url.pathname==='/api/start')start(r,p,a.practice===true);
-   else if(url.pathname==='/api/command')command(r,p,a);
+   else if(url.pathname==='/api/command')result=command(r,p,a);
    else return json(res,404,{error:'Não encontrado.'});
-   if(url.pathname==='/api/lobby'||url.pathname==='/api/start'||a.type==='surrender')broadcast(r);return json(res,200,{ok:true});
+   if(url.pathname==='/api/lobby'||url.pathname==='/api/start'||a.type==='surrender')broadcast(r);return json(res,200,{ok:true,...(result||{})});
   }
   if(req.method==='GET'&&url.pathname==='/api/events'){
    rate(`events:${ip}`,12,10000);const [r,p]=auth(req,url);rate(`events-player:${p.id}`,4,10000);const old=streams.get(p.id);if(old)old.end();
-   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(snapshot(r,p))}\n\n`);streams.set(p.id,res);
-   req.on('close',()=>{if(streams.get(p.id)===res)streams.delete(p.id);});return;
+   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(snapshot(r,p))}\n\n`);streams.set(p.id,res);delete r.emptySince;
+   res.on('close',()=>{if(streams.get(p.id)===res){streams.delete(p.id);lifecycle.disconnected(r);}});return;
   }
   const files={
    '/':'index.html','/client.js':'client.js','/terrain.js':'terrain.js',
    '/rules.js':'rules.js','/legends.js':'legends.js','/match-config.js':'match-config.js','/ai-config.js':'ai-config.js',
+   '/hero-roster.js':'hero-roster.js','/camp-config.js':'camp-config.js',
+   '/recruitment.js':'recruitment.js','/hero-guide.js':'hero-guide.js',
    '/combat-effects.js':'combat-effects.js','/spell-effects.js':'spell-effects.js',
-   '/scene-art.js':'scene-art.js','/audio.js':'audio.js','/style.css':'style.css',
+   '/scene-art.js':'scene-art.js','/neutral-art.js':'neutral-art.js','/audio.js':'audio.js','/style.css':'style.css',
    '/assets/hero-atlas.png':'assets/hero-atlas.png',
+   '/assets/mercenary-atlas-v07.png':'assets/mercenary-atlas-v07.png',
    '/assets/fronteira-keyart.png':'assets/fronteira-keyart.png'
   };
   const file=Object.hasOwn(files,url.pathname)?files[url.pathname]:null;
   if(req.method!=='GET'||!file)return json(res,404,{error:'Não encontrado.'});
-  const data=await readFile(new URL(`./public/${file}`,import.meta.url));
+  let data=await readFile(new URL(`./public/${file}`,import.meta.url));
+  if(file==='index.html')data=Buffer.from(data.toString('utf8').replaceAll('__GAME_VERSION__',gameVersion));
   const type=file.endsWith('.png')?'image/png':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';
   res.writeHead(200,{'Content-Type':type,'Cache-Control':file.endsWith('.png')?'public, max-age=3600':'no-cache'});res.end(data);
  }catch(e){if(!res.headersSent)json(res,e.status||400,{error:e.message});else res.end();}
@@ -89,5 +102,5 @@ server.requestTimeout=10000;server.headersTimeout=10000;server.keepAliveTimeout=
 server.on('connection',socket=>{const ip=socket.remoteAddress,n=connections.get(ip)||0;if(n>=24){socket.destroy();return;}connections.set(ip,n+1);socket.on('close',()=>{const left=(connections.get(ip)||1)-1;if(left)connections.set(ip,left);else connections.delete(ip);});});
 const timer=setInterval(()=>{for(const r of rooms.values()){const active=r.phase==='playing';step(r);if(active)broadcast(r);}},100);timer.unref();
 const heartbeat=setInterval(()=>{for(const s of streams.values())if(!s.destroyed)s.write(': ping\n\n');},15000);heartbeat.unref();
-const cleanup=setInterval(()=>{const now=Date.now();for(const [key,b]of limits)if(now-b.t>60000)limits.delete(key);for(const [code,r]of rooms){const connected=r.players.some(p=>streams.has(p.id));if(connected)r.touched=now;if(now-r.touched>30*60000||now-r.created>6*60*60000){for(const p of r.players){streams.get(p.id)?.end();streams.delete(p.id);}rooms.delete(code);}}},60000);cleanup.unref();
+const cleanup=setInterval(()=>{const now=Date.now();for(const [key,b]of limits)if(now-b.t>60000)limits.delete(key);lifecycle.sweep();},1000);cleanup.unref();
 if(process.argv[1]===fileURLToPath(import.meta.url))server.listen(Number(process.env.PORT)||3000,'0.0.0.0',()=>console.log(`Arte da Guerra: http://localhost:${server.address().port}`));

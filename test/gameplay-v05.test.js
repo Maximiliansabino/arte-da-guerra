@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {room, addPlayer, configureLobby, start, spawn, command, step} from '../game.js';
 import {STATS, HERO_TYPES, entityStats, trainDuration} from '../public/rules.js';
 import {terrainBlocked} from '../public/terrain.js';
+import {assignStartingPositions,startingPoint} from '../match.js';
 
 function setup(terrain = false, allies = false) {
   const r = room(undefined, terrain), p = addPlayer(r, 'Ana'), enemy = addPlayer(r, 'Bia');
@@ -10,6 +11,10 @@ function setup(terrain = false, allies = false) {
   if (ally) configureLobby(r, p, {action:'team', slot:ally.slot, team:p.team});
   start(r, p);
   r.entities = r.entities.filter(e => e.type === 'base');
+  // These pathfinding fixtures use explicit local geometry; random starts have
+  // separate match tests. Keep each base aligned with the fixture assignment.
+  r.startingPositions = assignStartingPositions(r, () => .999999);
+  for (const player of r.players) Object.assign(r.entities.find(e => e.owner === player.id), startingPoint(r, player.slot));
   r.resources = []; r.camps = []; r.fogEnabled = false;
   for (const player of r.players) {player.gold = 10000; player.wood = 10000;}
   return {r, p, enemy, ally};
@@ -18,7 +23,7 @@ const advance = (r, seconds) => {for (let i=0; i<Math.ceil(seconds*10); i++) ste
 const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
 const safe = (r,e) => (!r.mapId || !terrainBlocked(e.x,e.y)) && r.entities.every(b => !STATS[b.type].building || b.hp <= 0 || distance(e,b) >= 38);
 
-test('jogabilidade: mineração e corte distinguem deslocamento, coleta real e ociosidade', () => {
+test('jogabilidade: mineração e corte distinguem deslocamento, coleta real e falta de recurso', () => {
   for (const type of ['gold','wood']) {
     const {r,p} = setup(), worker = spawn(r,p,'worker',400,300);
     const resource = {id:type, type, x:550,y:300, amount:10}; r.resources.push(resource);
@@ -31,7 +36,10 @@ test('jogabilidade: mineração e corte distinguem deslocamento, coleta real e o
     for (let n=0;n<80;n++) {step(r);if(worker.activity.type==='gathering'){gathered=true;assert.equal(worker.activity.target,resource.id);assert.equal(worker.activity.resourceType,type);assert.ok(distance(worker,resource)<=28);}}
     assert.ok(gathered); assert.equal(resource.amount,0);
     assert.ok(Math.abs(p[type]-before-10)<1e-7);
-    assert.equal(worker.activity.type,'idle'); assert.equal(worker.order,null);
+    assert.equal(worker.activity.type,'blocked');
+    assert.equal(worker.activity.reasonCode,'resource-unavailable');
+    assert.equal(worker.order.type,'gather');
+    assert.equal(worker.order.resourceType,type);
   }
 });
 
@@ -88,7 +96,7 @@ test('jogabilidade: reparo inválido mantém a ordem anterior e jamais cura inim
 test('jogabilidade: bandeira da cidadela no recurso faz o trabalhador nascer e coletar', () => {
   for (const type of ['gold','wood']) {
     const {r,p} = setup(true), base = r.entities.find(e=>e.owner===p.id&&e.type==='base');
-    const source={id:'rally-'+type,type,x:420,y:250,amount:1000}; r.resources.push(source);
+    const source={id:'rally-'+type,type,x:base.x+(base.x<900?200:-200),y:base.y+(base.y<900?30:-30),amount:1000}; r.resources.push(source);
     command(r,p,{type:'rally',ids:[base.id],x:source.x,y:source.y,target:source.id});
     command(r,p,{type:'train',ids:[base.id],unit:'worker'});
     const paid=[p.gold,p.wood]; advance(r,10);
@@ -97,7 +105,7 @@ test('jogabilidade: bandeira da cidadela no recurso faz o trabalhador nascer e c
     assert.equal(worker.order.type,'gather'); assert.equal(worker.order.target,source.id);
     assert.equal(worker.activity.type,'gathering'); assert.ok(p[type]>paid[type==='gold'?0:1]);
     const flag=JSON.stringify(base.rally);
-    assert.throws(()=>command(r,p,{type:'rally',ids:[base.id],x:420,y:250,target:'missing'}));
+    assert.throws(()=>command(r,p,{type:'rally',ids:[base.id],x:source.x,y:source.y,target:'missing'}));
     assert.equal(JSON.stringify(base.rally),flag);
   }
 });

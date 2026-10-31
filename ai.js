@@ -1,15 +1,15 @@
 import {COST, STATS, HERO_TYPES, allied, placementError, upgradeCost} from './public/rules.js';
 import {ABILITIES, HERO_ABILITIES, RESEARCH, researchCost} from './public/legends.js';
 import {DEFAULT_DIFFICULTY, DIFFICULTIES} from './public/ai-config.js';
-import {terrainBlocked} from './public/terrain.js';
+import {getMap, terrainBlocked} from './public/terrain.js';
 import {canSee, startingPoint} from './match.js';
+import {chosenHeroes, heroRecruitError} from './public/hero-roster.js';
 
 const plans = new WeakMap();
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const ready = e => e && !e.construct && !e.upgrade && !e.researchJob && !e.troopUpgrade;
 const military = e => !STATS[e.type].building && !['worker', 'guardian'].includes(e.type);
 const canPay = (p, cost) => p.gold >= cost[0] && p.wood >= cost[1];
-const heroPresent = own => own.some(e => STATS[e.type].hero || e.queue.some(type => STATS[type].hero));
 
 function planFor(r, p, profile) {
   let roomPlans = plans.get(r);
@@ -29,7 +29,7 @@ function stagingPoint(r, base) {
     candidates.push({x: base.x + facing * Math.cos(angle) * radius, y: base.y + Math.sin(angle) * radius});
   }
   return candidates.find(point => point.x >= 35 && point.x <= 1765 && point.y >= 35 && point.y <= 1765 &&
-    (!r.mapId || !terrainBlocked(point.x, point.y, 20)) &&
+    (!r.mapId || !terrainBlocked(point.x, point.y, 20, r.mapId)) &&
     !r.entities.some(e => e.hp > 0 && STATS[e.type].building && distance(e, point) < 80)) ||
     {x: base.x, y: Math.min(1750, base.y + 90)};
 }
@@ -107,6 +107,9 @@ export function botTurn(r, p, {command}) {
     const sites = [preferred];
     for (const radius of [140, 215, 280]) for (let angle = 0; angle < 12; angle++) sites.push({x: base.x + Math.cos(angle * Math.PI / 6) * radius, y: base.y + Math.sin(angle * Math.PI / 6) * radius});
     for (const site of sites) {
+      // Camp positions are public map knowledge. Keep infrastructure outside
+      // their patrol area, including while guards are waiting to respawn.
+      if (r.mapId && getMap(r.mapId).camps.some(camp => distance(camp, site) < 260)) continue;
       const builder = workers.filter(e => e.order?.type !== 'repair').sort((a, b) => distance(a, site) - distance(b, site))[0];
       if (builder && !placementError(r, p.id, builder, site) && issue({type: 'build', ids: [builder.id], building: type, ...site})) return true;
     }
@@ -123,9 +126,12 @@ export function botTurn(r, p, {command}) {
       .sort((a, b) => distance(base, a) - distance(base, b))[0];
     if (resource) issue({type: 'rally', ids: [base.id], x: resource.x, y: resource.y, target: resource.id});
   }
-  const savingHero = r.time >= profile.heroAt && !heroPresent(own);
+  const preferred=HERO_TYPES[p.slot%HERO_TYPES.length];
+  const choices=[...new Set([...chosenHeroes(p),preferred,...HERO_TYPES])];
+  const nextHero=choices.find(type=>!heroRecruitError(r,p,type));
+  const savingHero = r.time >= profile.heroAt && !!nextHero;
   if (savingHero && !hall) build('hall', {x: base.x + facing * 215, y: base.y - 100});
-  if (savingHero && ready(hall) && !hall.queue.length) issue({type: 'train', ids: [hall.id], unit: p.heroType || HERO_TYPES[p.slot % HERO_TYPES.length]});
+  if (savingHero && ready(hall) && !hall.queue.length) issue({type: 'train', ids: [hall.id], unit: nextHero});
 
   let upgradingBarracks = false;
   const tierTime = barracks?.level === 1 ? profile.tier2At : profile.tier3At;
