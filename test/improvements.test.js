@@ -41,10 +41,10 @@ test('expansão exige ligação pronta à cidadela; perder a ponte interrompe no
   const next = {type: 'build', ids: [w.id], building: 'barracks', x: 780, y: 220};
   rejectedWithoutCost(r, p, next);
   assert.equal(connectedBuildings(r, p.id).some(e => e.id === bridge.id), false);
-  advance(r, 10.2);
+  advance(r, bridge.constructDuration + .2);
   command(r, p, next);
   const outpost = r.entities.find(e => e.type === 'barracks');
-  advance(r, 10.2);
+  advance(r, outpost.constructDuration + .2);
   assert.ok(connectedBuildings(r, p.id).some(e => e.id === outpost.id));
   r.entities = r.entities.filter(e => e.id !== bridge.id);
   w.x = 990;
@@ -63,11 +63,11 @@ test('trabalhador na base adversária não pode erguer torre, mesmo com cadeia p
   rejectedWithoutCost(r, p, {type: 'build', ids: [w.id], building: 'tower', x: 950, y: 900});
 });
 
-test('prévia e servidor respeitam alcance, ocupação, limites do mapa e propriedade do construtor', () => {
+test('prévia e servidor permitem caminhada distante e respeitam território, ocupação, mapa e propriedade', () => {
   const r = setup(), p = r.players[0], enemy = r.players[1];
   const w = spawn(r, p, 'worker', 270, 220);
-  const valid = {x: 520, y: 220};
-  assert.equal(BUILD_RULES.workerRange, 250);
+  const valid = {x: 500, y: 220};
+  assert.equal(BUILD_RULES.linkRange, 300);
   assert.equal(placementError(r, p.id, w, valid), null);
   rejectedWithoutCost(r, p, {type: 'build', ids: [w.id], building: 'tower', x: 521, y: 220});
   rejectedWithoutCost(r, p, {type: 'build', ids: [w.id], building: 'tower', x: 220, y: 220});
@@ -76,7 +76,10 @@ test('prévia e servidor respeitam alcance, ocupação, limites do mapa e propri
   r.resources.push({id: 'tree', type: 'wood', amount: 10, ...valid});
   rejectedWithoutCost(r, p, {type: 'build', ids: [w.id], building: 'tower', ...valid});
   r.resources[0].amount = 0;
+  const before=funds(p);
   command(r, p, {type: 'build', ids: [w.id], building: 'hall', ...valid});
+  assert.deepEqual(funds(p),before);assert.equal(w.order.type,'build');
+  advance(r,3);
   assert.ok(r.entities.some(e => e.type === 'hall' && e.construct > 0));
 });
 
@@ -156,7 +159,7 @@ test('quatro jogadores recrutam independentemente, sem desconto ou seleção com
     const type = HERO_TYPES[p.slot];
     command(r, p, {type: 'train', ids: [hall.id], unit: type});
   }
-  advance(r, 14.2);
+  advance(r, 25.2);
   for (const p of r.players) {
     const heroes = r.entities.filter(e => e.owner === p.id && STATS[e.type].hero);
     assert.equal(heroes.length, 1);
@@ -221,12 +224,12 @@ test('evolução de construção rejeita inimigos, seleção múltipla, falta de
   barracks.construct = 0;
   command(r, p, {type: 'train', ids: [barracks.id], unit: 'soldier'});
   rejectedWithoutCost(r, p, {type: 'upgrade', ids: [barracks.id]});
-  advance(r, 8.2);
+  advance(r, 12.2);
   command(r, p, {type: 'upgrade', ids: [barracks.id]});
   rejectedWithoutCost(r, p, {type: 'train', ids: [barracks.id], unit: 'soldier'});
 });
 
-test('quartel evoluído produz mais rápido e treinamento coletivo melhora coleta do trabalhador', () => {
+test('quartel evoluído produz mais rápido e treinamento militar não acelera coleta', () => {
   const r = setup(), p = r.players[0], barracks = spawn(r, p, 'barracks', 400, 450);
   const worker = spawn(r, p, 'worker', 700, 700);
   command(r, p, {type: 'upgrade', ids: [barracks.id]});
@@ -242,12 +245,12 @@ test('quartel evoluído produz mais rápido e treinamento coletivo melhora colet
   assert.equal(barracks.level, 3);
   command(r, p, {type: 'troopUpgrade', ids: [barracks.id]});
   advance(r, collectiveUpgradeDuration(p) + .2);
-  assert.equal(worker.level, 2);
+  assert.equal(worker.level, 1);
   r.resources.push({id: 'test-gold', type: 'gold', amount: 1000, x: worker.x, y: worker.y});
   command(r, p, {type: 'gather', ids: [worker.id], target: 'test-gold'});
   const before = p.gold;
   advance(r, 1);
-  assert.ok(p.gold - before > STATS.worker.gather);
+  assert.ok(Math.abs(p.gold - before - STATS.worker.gather)<1e-7);
 });
 
 test('ataques automáticos e ordenados geram eventos autoritativos de corpo a corpo, flecha e magia', () => {

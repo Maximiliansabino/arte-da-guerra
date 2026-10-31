@@ -27,14 +27,14 @@ test('heróis: sem prêmio do chefe continua apenas uma escolha, mesmo depois da
   recruit(r,a,hall,'bastion');
   assert.deepEqual(a.heroTypes,['bastion']);assert.equal(a.heroType,'bastion');
   assert.throws(()=>recruit(r,a,second,'shade'),/escolheu/);
-  advance(r,14.1);heroes(r,a)[0].hp=0;step(r);
+  advance(r,25.1);heroes(r,a)[0].hp=0;step(r);
   assert.throws(()=>recruit(r,a,second,'shade'),/escolheu/);
   recruit(r,a,second,'bastion');
   assert.deepEqual(second.queue,['bastion']);
 });
 
 test('heróis: segunda vaga permite outro tipo, cobra recrutamento e mantém limite global',()=>{
-  const {r,a,hall,second}=setup();recruit(r,a,hall,'bastion');advance(r,14.1);
+  const {r,a,hall,second}=setup();recruit(r,a,hall,'bastion');advance(r,25.1);
   a.heroLimit=2;
   const before=[a.gold,a.wood];
   recruit(r,a,second,'shade');
@@ -43,7 +43,7 @@ test('heróis: segunda vaga permite outro tipo, cobra recrutamento e mantém lim
   assert.deepEqual(a.heroTypes,['bastion','shade']);assert.equal(a.heroType,'bastion');
   assert.throws(()=>recruit(r,a,hall,'ranger'),/dois heróis/);
   assert.throws(()=>recruit(r,a,hall,'shade'),/já está vivo ou na fila/);
-  advance(r,14.1);assert.equal(heroes(r,a).length,2);
+  advance(r,25.1);assert.equal(heroes(r,a).length,2);
 });
 
 test('heróis: salões simultâneos não duplicam tipos nem liberam uma terceira escolha',()=>{
@@ -54,12 +54,12 @@ test('heróis: salões simultâneos não duplicam tipos nem liberam uma terceira
   assert.deepEqual([a.gold,a.wood],before);
   recruit(r,a,second,'storm');
   assert.throws(()=>recruit(r,a,hall,'ember'),/dois heróis/);
-  advance(r,14.1);
+  advance(r,25.1);
   assert.deepEqual(heroes(r,a).map(e=>e.type).sort(),['ranger','storm']);
   for(const hero of heroes(r,a))hero.hp=0;step(r);
   assert.throws(()=>recruit(r,a,hall,'warden'),/dois heróis/);
   recruit(r,a,hall,'ranger');recruit(r,a,second,'storm');
-  advance(r,14.1);assert.equal(heroes(r,a).length,2);
+  advance(r,25.1);assert.equal(heroes(r,a).length,2);
 });
 
 test('heróis: destruir salão mantém escolhas e permite repor só a vaga perdida',()=>{
@@ -69,7 +69,7 @@ test('heróis: destruir salão mantém escolhas e permite repor só a vaga perdi
   assert.deepEqual(chosenHeroes(a),['bastion','ember']);
   const rebuilt=spawn(r,a,'hall',550,450);
   assert.throws(()=>recruit(r,a,rebuilt,'shade'),/dois heróis/);
-  recruit(r,a,rebuilt,'ember');advance(r,14.1);
+  recruit(r,a,rebuilt,'ember');advance(r,25.1);
   assert.deepEqual(heroes(r,a).map(e=>e.type).sort(),['bastion','ember']);
 });
 

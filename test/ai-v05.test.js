@@ -15,7 +15,7 @@ function fixture(difficulty = 'normal', count = 1) {
   const army = r.entities.filter(e => e.owner === bot.id && e.type === 'soldier');
   while (army.length < count) army.push(spawn(r, bot, 'soldier', stage.x, stage.y));
   for (const [i, e] of army.entries()) {e.x = stage.x + i % 4 * 5; e.y = stage.y + Math.floor(i / 4) * 5; e.order = null;}
-  r.time = 120;
+  r.time = DIFFICULTIES[difficulty].firstAttack + 10;
   return {r, human, bot, base, stage, army};
 }
 
@@ -70,7 +70,7 @@ test('uma ofensiva prolongada recebe reforços em outra formação completa, nun
   const {r, bot, stage, army} = fixture('normal', 8);
   botTurn(r, bot, {command});
   const reserves = [spawn(r, bot, 'archer', stage.x, stage.y)];
-  r.time += 30;
+  r.time += DIFFICULTIES.normal.regroupDelay;
   botTurn(r, bot, {command});
   assert.notEqual(reserves[0].order?.type, 'attackMove');
   while (reserves.length < 8) reserves.push(spawn(r, bot, reserves.length === 7 ? 'siege' : 'soldier', stage.x, stage.y));

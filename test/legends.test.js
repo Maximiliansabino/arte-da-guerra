@@ -25,7 +25,7 @@ test('lendas: seis personagens têm três habilidades próprias e quatro ordens 
     const skills = HERO_ABILITIES[type].map(id => ABILITIES[id]);
     assert.equal(skills.length, 3);
     assert.deepEqual(skills.map(s => s.key), ['Q', 'W', 'R']);
-    assert.deepEqual(skills.map(s => s.requiredLevel), [1, 1, 3]);
+    assert.deepEqual(skills.map(s => s.requiredLevel), [1, 1, 5]);
     for (const skill of skills) { assert.equal(skill.hero, type); assert.ok(skill.mana > 0 && skill.cooldown > 0); }
   }
 });
@@ -76,7 +76,7 @@ test('recarga e mana são temporizadas no servidor; ultimate exige nível heroic
   assert.ok(hero.mana > spent && hero.mana <= hero.maxMana);
   advance(r, ABILITIES.tide.cooldown);
   cast(r, a, hero, 'tide');
-  hero.heroLevel = 3; hero.mana = 200;
+  hero.heroLevel = 5; hero.mana = 230;
   cast(r, a, hero, 'river');
   assert.equal(r.zones.length, 1);
   assert.equal(r.zones[0].ability, 'river');
@@ -124,7 +124,7 @@ test('Saci não salta através de água bloqueada, e a tentativa não gasta mana
 
 test('zona persistente afeta inimigos por tempo limitado e desaparece com a derrota do dono', () => {
   const {r, a, b} = setup(), hero = spawn(r, a, 'ember', 500, 900);
-  hero.heroLevel = 3; hero.mana = 200;
+  hero.heroLevel = 5; hero.mana = 230;
   const enemy = spawn(r, b, 'base', 600, 900), hp = enemy.hp;
   cast(r, a, hero, 'suncoil', 600, 900);
   advance(r, 1.2); assert.ok(enemy.hp < hp); assert.equal(r.zones.length, 1);
@@ -135,10 +135,10 @@ test('zona persistente afeta inimigos por tempo limitado e desaparece com a derr
 
 test('abates concedem XP uma vez, aumentam nível heroico e mantêm o nível comprado independente', () => {
   const {r, a, b} = setup(), hero = spawn(r, a, 'ranger', 500, 900);
-  hero.level = 2;
-  for (const dx of [30, 40]) { const target = spawn(r, b, 'soldier', 500 + dx, 900); target.hp = 1; }
+  hero.level = 1;
+  for (const dx of [30, 40, 50]) { const target = spawn(r, b, 'soldier', 500 + dx, 900); target.hp = 1; }
   cast(r, a, hero, 'tide', 540, 900); step(r);
-  assert.equal(hero.xp, HERO_XP[1]); assert.equal(hero.heroLevel, 2); assert.equal(hero.level, 2);
+  assert.equal(hero.xp, 120); assert.equal(hero.heroLevel, 2); assert.equal(hero.level, 1);
   const xp = hero.xp, maxHp = hero.maxHp;
   advance(r, 1); assert.equal(hero.xp, xp); assert.equal(hero.maxHp, maxHp);
   assert.ok(r.spellEvents.some(event => event.kind === 'levelUp'));
@@ -221,7 +221,7 @@ test('ordens têm bônus distintos e pesquisa de armadura reduz dano real', () =
   assert.ok(entityStats(stars).sight > entityStats(neutral).sight);
   target.research = {armor: 2}; const hp = target.hp;
   cast(r, a, hero, 'tide', target.x, target.y);
-  assert.ok(Math.abs(hp - target.hp - ABILITIES.tide.power * .84) < 1e-8);
+  assert.ok(Math.abs(hp - target.hp - ABILITIES.tide.power * .9) < 1e-8);
 });
 
 test('guardiões neutros continuam defendendo o acampamento com névoa ativa', () => {
@@ -265,7 +265,7 @@ test('ponto de encontro controla só a produção própria, e avançar atacando 
   const rally={type:'rally',ids:[barracks.id],x:600,y:900};
   assert.throws(()=>command(r,b,rally));
   command(r,a,rally);command(r,a,{type:'train',ids:[barracks.id],unit:'soldier'});
-  advance(r,8.1);
+  advance(r,12.1);
   const soldier=r.entities.find(e=>e.type==='soldier');assert.equal(soldier.order.type,'move');assert.equal(soldier.order.x,600);
   const enemy=spawn(r,b,'soldier',soldier.x+20,soldier.y),hp=enemy.hp;
   command(r,a,{type:'attackMove',ids:[soldier.id],x:800,y:900});step(r);

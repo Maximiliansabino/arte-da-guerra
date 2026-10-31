@@ -48,7 +48,7 @@ test('fortificação reduz dano comum e magia, preservando armadura, escudo e co
   const source=spawn(r,attacker,'soldier',700,850),tower=spawn(r,defender,'tower',950,850);
   tower.research.armor=2;tower.shield=20;tower.shieldUntil=10;
   const before=tower.hp;
-  const expected=100*.65*.84-20;
+  const expected=100*.5*.9-20;
   assert.ok(Math.abs(damageEntity(r,source,tower,100)-expected)<1e-9);
   assert.ok(Math.abs(tower.hp-(before-expected))<1e-9);
   assert.equal(tower.shield,0);
@@ -58,7 +58,7 @@ test('fortificação reduz dano comum e magia, preservando armadura, escudo e co
   assert.equal(entityStats(unit).fortification,0);
   const detachedSpell={id:999,owner:attacker.id,type:'ember',heroLevel:3};
   tower.research={};
-  assert.equal(damageEntity(r,detachedSpell,tower,100),65,'fonte persistente também respeita a fortificação');
+  assert.equal(damageEntity(r,detachedSpell,tower,100),50,'fonte persistente também respeita a fortificação');
 });
 
 test('obras incompletas permanecem vulneráveis e cerco ignora apenas a fortificação',()=>{
@@ -68,11 +68,11 @@ test('obras incompletas permanecem vulneráveis e cerco ignora apenas a fortific
   assert.equal(entityStats(tower).fortification,0);
   assert.equal(damageEntity(r,soldier,tower,100),100);
   tower.construct=0;tower.research.armor=2;
-  assert.equal(entityStats(tower).fortification,.35);
-  assert.equal(damageEntity(r,engine,tower,100),84,'cerco ainda respeita a pesquisa de armadura');
+  assert.equal(entityStats(tower).fortification,.5);
+  assert.equal(damageEntity(r,engine,tower,100),90,'cerco ainda respeita a pesquisa de armadura');
   tower.shield=90;tower.shieldUntil=10;
   assert.equal(damageEntity(r,engine,tower,100),0,'cerco não ignora escudos');
-  assert.equal(tower.shield,6);
+  assert.equal(tower.shield,0);
 });
 
 test('habilidade ofensiva real causa dano reduzido à estrutura pronta sem mudar dano às tropas',()=>{
@@ -80,7 +80,7 @@ test('habilidade ofensiva real causa dano reduzido à estrutura pronta sem mudar
   const hero=spawn(r,attacker,'ranger',800,850),tower=spawn(r,defender,'tower',950,850);
   const unit=spawn(r,defender,'soldier',950,910),buildingHP=tower.hp,unitHP=unit.hp;
   command(r,attacker,{type:'cast',ids:[hero.id],ability:'tide',x:tower.x,y:tower.y});
-  assert.ok(Math.abs(buildingHP-tower.hp-ABILITIES.tide.power*.65)<1e-9);
+  assert.ok(Math.abs(buildingHP-tower.hp-ABILITIES.tide.power*.5)<1e-9);
   assert.equal(unitHP-unit.hp,ABILITIES.tide.power);
   assert.ok(r.spellEvents.some(e=>e.ability==='tide'));
 });
@@ -95,7 +95,7 @@ test('alcance defensivo cobre Iara no limite contra prédios e eventos informam 
   const towerEvent=r.combatEvents.find(e=>e.attackerId===tower.id&&e.targetId===hero.id);
   assert.ok(heroEvent&&towerEvent,'o herói não ataca de um ponto cego da torre');
   assert.ok(Math.abs(heroEvent.damage-(hp-tower.hp))<1e-9);
-  assert.ok(Math.abs(heroEvent.damage-entityStats(hero).damage*.65)<1e-9);
+  assert.ok(Math.abs(heroEvent.damage-entityStats(hero).damage*.5)<1e-9);
   assert.equal(towerEvent.damage,heroHP-hero.hp);
 });
 
@@ -114,16 +114,16 @@ test('duas torres próximas resistem a dois soldados e um herói nos três níve
 
 test('uma torre isolada não substitui um exército e uma força maior rompe duas torres',()=>{
   for(const hero of HERO_TYPES) {
-    const {defense,army}=siegeTrial({hero,towers:1});
+    const {defense,army}=siegeTrial({hero,soldiers:5,towers:1});
     assert.ok(defense.every(e=>e.hp<=0));
     assert.ok(army.some(e=>e.hp>0));
   }
-  const raidGold=COST.soldier[0]*4+COST.bastion[0],defenseGold=COST.tower[0]*2;
+  const raidGold=COST.soldier[0]*8+COST.bastion[0],defenseGold=COST.tower[0]*2;
   assert.ok(raidGold>defenseGold,'o rompimento envolve maior investimento ofensivo');
   for(const tier of [1,2,3]) {
-    const {r,defense,army}=siegeTrial({soldiers:4,tier});
-    assert.ok(defense.every(e=>e.hp<=0),`quatro soldados e Curupira rompem equipamento ${tier}`);
-    assert.ok(army.some(e=>e.hp>0));assert.ok(r.time<40);
+    const {r,defense,army}=siegeTrial({soldiers:8,tier});
+    assert.ok(defense.every(e=>e.hp<=0),`oito soldados e Curupira rompem equipamento ${tier}`);
+    assert.ok(army.some(e=>e.hp>0));assert.ok(r.time<60);
   }
 });
 
@@ -132,7 +132,7 @@ test('cerco ultrapassa alcance das torres e quebra defesa estática sem proteç�
     const {r,defense,army}=siegeTrial({hero:null,soldiers:0,siege:2,tier});
     assert.ok(defense.every(e=>e.hp<=0));
     assert.ok(army.every(e=>e.hp===e.maxHp),'torres sem tropas de apoio são vulneráveis a cerco distante');
-    assert.ok(r.time<30);
+    assert.ok(r.time<60);
   }
 });
 

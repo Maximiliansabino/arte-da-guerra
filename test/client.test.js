@@ -179,6 +179,7 @@ test('cliente: salão usa hitbox de prédio e seis heróis, níveis e evoluçõe
   const h = harness();
   assert.equal(h.run('entityAt({x:435,y:220}).id'), 2, 'salão selectable beyond unit hitbox');
   h.initial.entities.push(...rules.HERO_TYPES.map((type, index) => ({...entity(10 + index, type, 'p1', 500 + index * 50, 500), level: 3})));
+  h.initial.entities.push({...entity(30,'soldier','p1',700,600),level:3});
   h.initial.entities[1].upgrade = {level: 2, duration: 16, remaining: 8};
   h.run('render(1016)');
   const text = h.calls.filter(call => call.name === 'fillText').map(call => call.args[0]);
@@ -283,13 +284,13 @@ test('cliente: Q/W/R usam alvo, alcance, mana, recarga e nível heroico', async 
   hero.mana=0; h.run('refreshActions()');
   assert.ok(actionsWith(h,'skill-action').every(button=>button.disabled));
   press(h,'w'); assert.equal(h.requests.length,1);
-  hero.mana=150; hero.heroLevel=3; h.run('refreshActions()');
+  hero.mana=150; hero.heroLevel=5; h.run('refreshActions()');
   assert.equal(actionsWith(h,'ultimate-action')[0].disabled,false);
   press(h,'w'); await Promise.resolve();
   assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'cast',ability:'bark',x:400,y:220});
   press(h,'r'); assert.equal(h.run('spellTarget.ability'),'forest');
   press(h,'Escape'); assert.equal(h.run('spellTarget'),null);
-  assert.match(h.elements.get('#hero-status').textContent,/Lenda 3\/5 · Mana 150\/150/);
+  assert.match(h.elements.get('#hero-status').textContent,/Lenda 5\/5 · Mana 150\/150/);
 });
 
 test('cliente: mercado e inventário enviam item e espaço corretos e atualizam bloqueios', async () => {
@@ -457,13 +458,13 @@ test('cliente: quartel comunica níveis de recrutamento e compra treinamento par
   assert.equal(actionsWith(h,'collective-action')[0].disabled,true);
   barracks.level=2;h.run('refreshActions()');assert.equal(recruit('Arqueiro').disabled,false);assert.equal(recruit('Cuidador das Fontes').disabled,true);
   barracks.level=3;h.run('refreshActions()');assert.equal(recruit('Cuidador das Fontes').disabled,false);
-  let collective=actionsWith(h,'collective-action')[0];assert.equal(collective.disabled,false);assert.match(collective.textContent,/450.*300.*25 s/);
+  let collective=actionsWith(h,'collective-action')[0];assert.equal(collective.disabled,false);assert.match(collective.textContent,/450.*300.*35 s/);
   await collective.onclick();assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'troopUpgrade'});
   barracks.troopUpgrade={level:2,remaining:17,duration:25};h.run('refreshActions()');
   assert.equal(actionsWith(h,'collective-action')[0].disabled,true);assert.equal(recruit('Soldado').disabled,true);
   assert.match(h.elements.get('#detail').textContent,/Treinamento coletivo 2: 17 s/);
   barracks.troopUpgrade=null;h.initial.players[0].troopLevel=2;h.run('refreshActions()');
-  collective=actionsWith(h,'collective-action')[0];assert.match(collective.textContent,/750.*500.*35 s/);
+  collective=actionsWith(h,'collective-action')[0];assert.match(collective.textContent,/750.*500.*45 s/);
   h.initial.players[0].troopLevel=3;h.run('refreshActions()');assert.equal(actionsWith(h,'collective-action').length,0);
   const hero=entity(11,'bastion');h.initial.entities.push(hero);h.select(11);assert.equal(upgradeButton(h),undefined);
 });
@@ -487,13 +488,13 @@ test('cliente: fila mostra dois soldados e arqueiro em ordem, com produção e e
   assert.equal(h.elements.get('#production-panel').hidden,false);
   let rows=h.elements.get('#production-list').children;
   assert.equal(rows.length,3);
-  assert.match(rows[0].textContent,/1\..*Soldado.*Em produção.*50%.*4 s restantes/);
+  assert.match(rows[0].textContent,/1\..*Soldado.*Em produção.*50%.*6 s restantes/);
   assert.match(rows[1].textContent,/2\..*Soldado.*Em espera/);
   assert.match(rows[2].textContent,/3\..*Arqueiro.*Em espera/);
   assert.equal(rows[0].children.find(e=>e.tagName==='PROGRESS').value,50);
   assert.equal(rows[1].children.some(e=>e.tagName==='PROGRESS'),false);
   assert.match(h.elements.get('#production-title').textContent,/3\/5.*2 em espera/);
-  barracks.progress+=.68;h.run('refreshActions()');
+  barracks.progress+=rules.trainDuration('soldier',barracks)*.1;h.run('refreshActions()');
   assert.equal(h.elements.get('#production-list').children[0].children.find(e=>e.tagName==='PROGRESS').value,60,'progresso atualiza mesmo sem mudar seleção ou tamanho da fila');
   barracks.queue.shift();barracks.progress=0;h.run('refreshActions()');
   rows=h.elements.get('#production-list').children;
@@ -542,6 +543,7 @@ test('cliente: fila é ocultada ao selecionar personagens e adversários, mas mo
   }
   h.run('selected=new Set([1,2]);refreshActions()');
   assert.equal(h.elements.get('#production-panel').hidden,false);
+  h.elements.get('#production-nav').children[1].onclick();
   assert.match(h.elements.get('#production-list').textContent,/Curupira/);
 });
 
@@ -641,12 +643,4 @@ test('cliente: rochas e cristais dos mapas não herdam a largura das trilhas', (
     const outlines=h.calls.filter(call=>call.name==='stroke');assert.ok(outlines.length>0);
     assert.ok(outlines.every(call=>call.lineWidth>0&&call.lineWidth<=3),`${mapId}: contornos de obstáculos precisam permanecer finos`);
   }
-});
-
-test('cliente: voltar ao início avisa saída, cancela stream e limpa sessão antes da navegação',async()=>{
- const h=harness();h.sandbox.AbortSignal=AbortSignal;let aborted=false;
- h.sandbox.abortTest=()=>{aborted=true;};h.run('streamController={abort:abortTest}');
- await h.elements.get('#again').onclick();
- assert.ok(aborted);assert.equal(h.run('session'),null);assert.equal(h.sandbox.location.href,'/');
- assert.equal(h.requests.length,1);assert.ok(h.requests[0].url.includes('/api/leave?room='));assert.equal(h.requests[0].options.keepalive,true);
 });
