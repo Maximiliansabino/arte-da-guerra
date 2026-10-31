@@ -36,5 +36,11 @@ test('mapa: servidor navega pela ponte e acampamentos têm guardiões neutros e 
 
 test('máquina aliada escolhe base inimiga e nunca a do anfitrião',()=>{
  const r=room(),a=addPlayer(r,'A');configureLobby(r,a,{action:'bot',slot:1});configureLobby(r,a,{action:'team',slot:1,team:0});const enemy=addPlayer(r,'Inimigo');start(r,a);
- r.time=46;r.tick=19;step(r);const bot=r.players.find(p=>p.bot),soldier=r.entities.find(e=>e.owner===bot.id&&e.type==='soldier'),base=r.entities.find(e=>e.owner===enemy.id&&e.type==='base');assert.equal(soldier.order.type,'attackMove');assert.equal(soldier.order.x,base.x);assert.equal(soldier.order.y,base.y);
+ const bot=r.players.find(p=>p.bot),home=r.entities.find(e=>e.owner===bot.id&&e.type==='base'),base=r.entities.find(e=>e.owner===enemy.id&&e.type==='base');
+ const staging={x:home.x+(home.x<900?185:-185),y:home.y};
+ const soldiers=r.entities.filter(e=>e.owner===bot.id&&e.type==='soldier');soldiers[0].x=staging.x;soldiers[0].y=staging.y;
+ for(let n=1;n<8;n++)soldiers.push(spawn(r,bot,'soldier',staging.x+(n%3)*10,staging.y+Math.floor(n/3)*10));
+ r.time=100;r.tick=19;step(r);
+ assert.ok(soldiers.every(soldier=>soldier.order?.type==='attackMove'));
+ for(const soldier of soldiers){assert.ok(Math.hypot(soldier.order.x-base.x,soldier.order.y-base.y)<80);assert.ok(Math.hypot(soldier.order.x-home.x,soldier.order.y-home.y)>300);}
 });

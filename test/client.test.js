@@ -6,6 +6,7 @@ import {MAP} from '../public/terrain.js';
 import * as rules from '../public/rules.js';
 import * as legends from '../public/legends.js';
 import * as matchConfig from '../public/match-config.js';
+import * as aiConfig from '../public/ai-config.js';
 import {createSceneArt} from '../public/scene-art.js';
 import {createSpellEffects} from '../public/spell-effects.js';
 import {createAudio} from '../public/audio.js';
@@ -70,7 +71,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    ...rules, ...legends, ...matchConfig, MAP, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
+    ...rules, ...legends, ...matchConfig, ...aiConfig, MAP, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
     TextDecoder, AbortController, console,
@@ -126,11 +127,13 @@ test('cliente: escolha permanente, herói vivo e fila em outro salão bloqueiam 
   assert.ok(heroButtons(h).every(card => card.disabled));
 });
 
-test('cliente: evolução respeita custo, fila, obra, nível máximo e envia a unidade selecionada', async () => {
+test('cliente: evolução de prédios respeita custo, fila, obra e nível máximo; personagens usam treinamento coletivo', async () => {
   const h = harness(); h.select(3);
+  assert.equal(upgradeButton(h),undefined,'trabalhadores não compram evolução individual');
+  h.select(1);
   assert.equal(upgradeButton(h).disabled, false);
   await upgradeButton(h).onclick();
-  assert.deepEqual(h.requests[0].body, {ids: [3], type: 'upgrade'});
+  assert.deepEqual(h.requests[0].body, {ids: [1], type: 'upgrade'});
   h.initial.players[0].wood = 0; h.run('refreshActions()');
   assert.equal(upgradeButton(h).disabled, true);
   h.initial.players[0].wood = 5000; h.select(2);
@@ -308,7 +311,8 @@ test('cliente: mercado e inventário enviam item e espaço corretos e atualizam 
 
 test('cliente: pesquisa mostra tempo do próximo nível e impede duplicação em outra oficina', async () => {
   const h=harness(), workshop=entity(10,'workshop'), other=entity(11,'workshop');
-  h.initial.entities.push(workshop,other); h.initial.players[0].research.weapons=1; h.select(10);
+  const barracks=entity(12,'barracks');barracks.level=3;
+  h.initial.entities.push(workshop,other,barracks); h.initial.players[0].research.weapons=1; h.select(10);
   let buttons=actionsWith(h,'research-action');
   assert.equal(buttons.length,3);
   assert.match(buttons[0].textContent,/440.*280.*44 s/);
@@ -344,4 +348,191 @@ test('cliente: cristais mantêm contorno fino mesmo após desenhar trilhas larga
   assert.ok(outlines.every(call=>call.lineWidth>0 && call.lineWidth<=3));
   assert.equal(h.calls[0].name,'save');
   assert.equal(h.calls.at(-1).name,'restore');
+});
+
+test('cliente: trabalhador oferece mineração e madeira contextuais, enviando somente os trabalhadores selecionados', async () => {
+  const h=harness();
+  h.initial.resources.push({id:'ouro-perto',type:'gold',x:330,y:350,amount:600},{id:'ouro-longe',type:'gold',x:500,y:400,amount:600},{id:'arvore',type:'wood',x:300,y:390,amount:600});
+  h.initial.entities.push(entity(10,'soldier','p1',300,370));
+  h.run('selected=new Set([3,10]);refreshActions()');
+  const work=actionsWith(h,'work-action');
+  assert.match(work[0].textContent,/Minerar ouro.*Recurso próximo/);
+  assert.match(work[1].textContent,/Coletar madeira.*Recurso próximo/);
+  await work[0].onclick(); assert.deepEqual(h.requests.at(-1).body,{ids:[3],type:'gather',target:'ouro-perto'});
+  await work[1].onclick(); assert.deepEqual(h.requests.at(-1).body,{ids:[3],type:'gather',target:'arvore'});
+  h.initial.resources[0].amount=0;h.run('refreshActions()');
+  await actionsWith(h,'work-action')[0].onclick(); assert.equal(h.requests.at(-1).body.target,'ouro-longe');
+});
+
+test('cliente: coleta distante exige escolher o tipo correto de recurso e mantém a mira após erro', async () => {
+  const h=harness();h.select(3);
+  h.initial.resources.push({id:'far-gold',type:'gold',x:800,y:500,amount:100},{id:'far-wood',type:'wood',x:900,y:500,amount:100});
+  h.run('refreshActions();camera={x:900,y:500};zoom=1');
+  await actionsWith(h,'work-action')[0].onclick(); assert.equal(h.run('workTarget'),'gold');
+  await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});
+  assert.equal(h.requests.length,0);assert.equal(h.run('workTarget'),'gold');
+  h.run('camera={x:800,y:500}');
+  await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});
+  assert.deepEqual(h.requests.at(-1).body,{ids:[3],type:'gather',target:'far-gold'});
+  assert.equal(h.run('workTarget'),null);
+});
+
+test('cliente: conserto aparece no trabalhador e clique direito aceita estrutura aliada danificada', async () => {
+  const h=harness(), tower=entity(10,'tower','p1',400,350);tower.hp-=40;
+  h.initial.entities.push(tower);h.select(3);
+  const repair=actionsWith(h,'work-action').find(button=>button.textContent.includes('Consertar'));
+  assert.match(repair.textContent,/Torre próxima · 3 vida\/s/);
+  await repair.onclick();assert.deepEqual(h.requests.at(-1).body,{ids:[3],type:'repair',target:10});
+  h.initial.players[1].team=0;tower.owner='p2';h.run('camera={x:400,y:350};zoom=1');
+  await h.elements.get('#map').onpointerdown({button:2,clientX:500,clientY:300});
+  assert.deepEqual(h.requests.at(-1).body,{ids:[3],type:'repair',target:10});
+  tower.hp=tower.maxHp;h.run('refreshActions()');
+  await actionsWith(h,'work-action').find(button=>button.textContent.includes('Consertar')).onclick();
+  assert.equal(h.run('workTarget'),'repair');
+  await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});
+  assert.equal(h.requests.length,2,'prédio sem dano não envia conserto');
+});
+
+test('cliente: painel compacto agrupa ociosos e exclui combate automático, coleta, bloqueio e deslocamento', () => {
+  const h=harness();
+  for(let i=0;i<6;i++)h.initial.entities.push({...entity(10+i,'soldier','p1',500+i*10,500),activity:{type:'idle'}});
+  h.initial.entities.push({...entity(20,'soldier'),activity:{type:'attacking',target:4}},
+    {...entity(21,'soldier'),order:{type:'move',x:800,y:500},activity:{type:'moving'}},
+    {...entity(22,'soldier'),activity:{type:'blocked',reason:'Sem passagem'}},
+    {...entity(23,'worker'),activity:{type:'gathering',target:'ouro'}},
+    {...entity(24,'archer'),activity:{type:'rooted'},rootUntil:10},entity(25,'soldier','p2'));
+  h.run('updateUI()');
+  assert.equal(h.elements.get('#idle-panel').hidden,false);
+  assert.equal(h.elements.get('#idle-total').textContent,'7');
+  const soldiers=h.elements.get('#idle-units').children.find(button=>button.textContent==='Soldados · 6');
+  assert.ok(soldiers);soldiers.onclick();
+  assert.deepEqual(Array.from(h.run('[...selected]')),[10,11,12,13,14,15]);
+  assert.equal(h.elements.get('#selection').textContent,'6 unidades');
+  h.initial.entities.find(e=>e.id===10).activity={type:'attacking',target:4};h.run('updateUI()');
+  assert.ok(h.elements.get('#idle-units').children.some(button=>button.textContent==='Soldados · 5'));
+});
+
+test('cliente: mostra alvo real de combate, marca o alvo no mapa e explica bloqueios', () => {
+  const h=harness(), soldier=entity(10,'soldier');soldier.activity={type:'attacking',target:4};h.initial.entities.push(soldier);h.select(10);
+  assert.match(h.elements.get('#activity-status').textContent,/Atacando: Cidadela · Bia/);
+  h.run('drawOrderFeedback(1000)');
+  assert.ok(h.calls.some(call=>call.name==='fillText'&&call.args[0]==='Alvo · Cidadela'));
+  soldier.activity={type:'blocked',target:4,reason:'Passagem fechada. Libere a saída.'};h.run('refreshActions()');
+  assert.equal(h.elements.get('#activity-status').textContent,'Passagem fechada. Libere a saída.');
+  assert.equal(h.elements.get('#activity-status').classList.contains('blocked'),true);
+  h.initial.entities=h.initial.entities.filter(e=>e.id!==4);h.calls.length=0;h.run('drawOrderFeedback(1000)');
+  assert.equal(h.calls.some(call=>call.name==='fillText'&&call.args[0]==='Alvo · Cidadela'),false,'alvo oculto não permanece desenhado');
+});
+
+test('cliente: anima ferramenta e recursos somente durante coleta ou conserto confirmados', () => {
+  const h=harness(),worker=h.initial.entities.find(e=>e.id===3),tower=entity(10,'tower','p1',350,350);tower.hp-=20;h.initial.entities.push(tower);
+  h.initial.resources=[{id:'gold',type:'gold',x:320,y:350,amount:100},{id:'wood',type:'wood',x:300,y:375,amount:100}];
+  for(const [activity,text] of [[{type:'gathering',target:'gold',resourceType:'gold'},'+ ouro'],[{type:'gathering',target:'wood',resourceType:'wood'},'+ madeira'],[{type:'repairing',target:10},'+ vida']]){
+    worker.activity=activity;h.calls.length=0;h.run('render(1750)');
+    assert.ok(h.calls.some(call=>call.name==='fillText'&&call.args[0]===text),text);
+  }
+  worker.activity={type:'moving',target:'gold'};h.calls.length=0;h.run('render(1800)');
+  assert.equal(h.calls.some(call=>call.name==='fillText'&&['+ ouro','+ madeira','+ vida'].includes(call.args[0])),false);
+});
+
+test('cliente: bandeira da cidadela sobre ouro envia o recurso e mostra coleta automática', async () => {
+  const h=harness();h.select(1);h.initial.resources=[{id:'flag-gold',type:'gold',x:600,y:500,amount:100}];
+  h.run('camera={x:600,y:500};zoom=1');
+  await h.elements.get('#map').onpointerdown({button:2,clientX:500,clientY:300});
+  assert.deepEqual(h.requests.at(-1).body,{ids:[1],type:'rally',x:600,y:500,target:'flag-gold'});
+  h.initial.entities[0].rally={x:600,y:500,target:'flag-gold',type:'gather'};
+  h.run('render(1000)');
+  assert.ok(h.calls.some(call=>call.name==='fillText'&&call.args[0]==='Ouro · coleta automática'));
+});
+
+test('cliente: quartel comunica níveis de recrutamento e compra treinamento para toda a companhia', async () => {
+  const h=harness(),barracks=entity(10,'barracks');h.initial.entities.push(barracks);h.select(10);
+  const recruit=name=>h.actions().find(button=>button.children[0]?.textContent.endsWith(name));
+  assert.equal(recruit('Soldado').disabled,false);assert.equal(recruit('Arqueiro').disabled,true);assert.equal(recruit('Cuidador das Fontes').disabled,true);
+  assert.equal(actionsWith(h,'collective-action')[0].disabled,true);
+  barracks.level=2;h.run('refreshActions()');assert.equal(recruit('Arqueiro').disabled,false);assert.equal(recruit('Cuidador das Fontes').disabled,true);
+  barracks.level=3;h.run('refreshActions()');assert.equal(recruit('Cuidador das Fontes').disabled,false);
+  let collective=actionsWith(h,'collective-action')[0];assert.equal(collective.disabled,false);assert.match(collective.textContent,/450.*300.*25 s/);
+  await collective.onclick();assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'troopUpgrade'});
+  barracks.troopUpgrade={level:2,remaining:17,duration:25};h.run('refreshActions()');
+  assert.equal(actionsWith(h,'collective-action')[0].disabled,true);assert.equal(recruit('Soldado').disabled,true);
+  assert.match(h.elements.get('#detail').textContent,/Treinamento coletivo 2: 17 s/);
+  barracks.troopUpgrade=null;h.initial.players[0].troopLevel=2;h.run('refreshActions()');
+  collective=actionsWith(h,'collective-action')[0];assert.match(collective.textContent,/750.*500.*35 s/);
+  h.initial.players[0].troopLevel=3;h.run('refreshActions()');assert.equal(actionsWith(h,'collective-action').length,0);
+  const hero=entity(11,'bastion');h.initial.entities.push(hero);h.select(11);assert.equal(upgradeButton(h),undefined);
+});
+
+test('cliente: dificuldade é configurável pelo anfitrião e treino difícil a aplica antes de iniciar', async () => {
+  const initial=fixture();initial.phase='lobby';initial.difficulty='normal';const h=harness(initial);h.run('updateUI()');
+  assert.equal(h.elements.get('#difficulty').disabled,false);h.elements.get('#difficulty').value='hard';await h.elements.get('#difficulty').onchange();
+  assert.deepEqual(h.requests.at(-1).body,{action:'difficulty',difficulty:'hard'});
+  h.run("session.id='p2';updateUI()");assert.equal(h.elements.get('#difficulty').disabled,true);
+  h.run('session=null');h.elements.get('#training-difficulty').value='hard';const posts=[];
+  h.sandbox.fetch=async(url,options)=>{if(url.includes('/events'))return {ok:false};posts.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>url==='/api/create'?{id:'p1',code:'hard-practice',token:'token'}:{ok:true}};};
+  await h.elements.get('#practice').onclick();
+  assert.deepEqual(posts.map(post=>post.body.action||post.url),['/api/create','mode','difficulty','/api/start?room=hard-practice']);
+  assert.deepEqual(posts[2].body,{action:'difficulty',difficulty:'hard'});
+});
+
+test('cliente: fila mostra dois soldados e arqueiro em ordem, com produção e espera separadas', () => {
+  const h=harness(),barracks=entity(10,'barracks');barracks.level=2;
+  barracks.queue=['soldier','soldier','archer'];barracks.progress=rules.trainDuration('soldier',barracks)/2;
+  h.initial.entities.push(barracks);h.select(10);
+  assert.equal(h.elements.get('#production-panel').hidden,false);
+  let rows=h.elements.get('#production-list').children;
+  assert.equal(rows.length,3);
+  assert.match(rows[0].textContent,/1\..*Soldado.*Em produção.*50%.*4 s restantes/);
+  assert.match(rows[1].textContent,/2\..*Soldado.*Em espera/);
+  assert.match(rows[2].textContent,/3\..*Arqueiro.*Em espera/);
+  assert.equal(rows[0].children.find(e=>e.tagName==='PROGRESS').value,50);
+  assert.equal(rows[1].children.some(e=>e.tagName==='PROGRESS'),false);
+  assert.match(h.elements.get('#production-title').textContent,/3\/5.*2 em espera/);
+  barracks.progress+=.68;h.run('refreshActions()');
+  assert.equal(h.elements.get('#production-list').children[0].children.find(e=>e.tagName==='PROGRESS').value,60,'progresso atualiza mesmo sem mudar seleção ou tamanho da fila');
+  barracks.queue.shift();barracks.progress=0;h.run('refreshActions()');
+  rows=h.elements.get('#production-list').children;
+  assert.equal(rows.length,2);assert.match(rows[0].textContent,/Soldado.*0%/);
+  barracks.queue=['archer','soldier'];h.run('refreshActions()');
+  assert.match(h.elements.get('#production-list').children[0].textContent,/Arqueiro.*Em produção/,'conteúdo atualiza mesmo com igual tamanho de fila');
+});
+
+test('cliente: unidade pronta sem saída permanece primeira, sem fingir que ainda está produzindo', () => {
+  const h=harness(),base=h.initial.entities[0];base.queue=['worker','worker'];base.progress=rules.trainDuration('worker',base);
+  base.activity={type:'blocked',reason:'Saída bloqueada.'};h.select(1);
+  const rows=h.elements.get('#production-list').children;
+  assert.match(rows[0].textContent,/Pronto · aguardando saída livre/);
+  assert.equal(rows[0].children.find(e=>e.tagName==='PROGRESS').value,100);
+  assert.match(rows[1].textContent,/Em espera/);
+  assert.doesNotMatch(h.elements.get('#detail').textContent,/0 s/);
+  h.run('render(1000)');
+  assert.ok(h.calls.some(c=>c.name==='fillText'&&c.args[0]==='Trabalhador · aguardando saída · +1 em espera'));
+});
+
+test('cliente: painel da construção mostra obras, evolução, pesquisa e treinamento em andamento', () => {
+  const h=harness(),hall=h.initial.entities[1];
+  for(const [field,job,expected] of [
+    ['construct',5,/Construindo Salão das Lendas/],
+    ['upgrade',{level:2,remaining:8,duration:16},/Evoluindo Salão das Lendas para nível 2/],
+    ['researchJob',{id:'harvest',remaining:9,duration:18},/Pesquisando Coleta Cooperativa/],
+    ['troopUpgrade',{level:2,remaining:12.5,duration:25},/Treinamento coletivo II/]
+  ]){
+    hall[field]=job;h.run('refreshActions()');
+    const row=h.elements.get('#production-list').children[0];
+    assert.match(row.textContent,expected);assert.match(row.textContent,/Em andamento · 50%/);
+    delete hall[field];
+  }
+  h.run('refreshActions()');
+  assert.equal(h.elements.get('#production-list').children.length,0);
+  assert.equal(h.elements.get('#production-empty').hidden,false);
+});
+
+test('cliente: fila é ocultada ao selecionar personagens, adversários ou várias construções', () => {
+  const h=harness();h.initial.entities[1].queue=['bastion'];h.run('refreshActions()');
+  assert.equal(h.elements.get('#production-panel').hidden,false);
+  for(const code of ['selected=new Set([3])','selected=new Set([4])','selected=new Set([1,2])','selected=new Set()']){
+    h.run(code+';refreshActions()');
+    assert.equal(h.elements.get('#production-panel').hidden,true);
+    assert.equal(h.elements.get('#production-list').children.length,0);
+  }
 });

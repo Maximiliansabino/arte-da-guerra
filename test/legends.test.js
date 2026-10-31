@@ -172,6 +172,7 @@ test('itens só são consumidos pelo proprietário e quando recuperam recurso', 
 
 test('pesquisa cobra uma vez, leva tempo e melhora unidades existentes e futuras', () => {
   const {r, a} = setup(), workshop = spawn(r, a, 'workshop', 500, 900), second = spawn(r, a, 'workshop', 650, 900);
+  spawn(r, a, 'barracks', 350, 900).level = 3;
   const soldier = spawn(r, a, 'soldier', 500, 1000), before = entityStats(soldier).damage;
   const cost = researchCost(a, 'weapons'), gold = a.gold, wood = a.wood;
   command(r, a, {type: 'research', ids: [workshop.id], research: 'weapons'});
@@ -187,6 +188,7 @@ test('pesquisa cobra uma vez, leva tempo e melhora unidades existentes e futuras
 
 test('pesquisa rejeita inimigos, falta de recurso, fila e nível máximo; oficina destruída não termina pesquisa', () => {
   const {r, a, b} = setup(), workshop = spawn(r, a, 'workshop', 500, 900);
+  spawn(r, a, 'barracks', 350, 900).level = 3;
   const order = {type: 'research', ids: [workshop.id], research: 'armor'};
   assert.throws(() => command(r, b, order));
   a.wood = 0; assert.throws(() => command(r, a, order)); assert.equal(workshop.researchJob, undefined);
@@ -198,6 +200,7 @@ test('pesquisa rejeita inimigos, falta de recurso, fila e nível máximo; oficin
 
 test('cuidador e aríete têm produção própria; cuidador restaura aliado e aríete amplia dano a construções', () => {
   const {r, a, b} = setup(), barracks = spawn(r, a, 'barracks', 450, 500), workshop = spawn(r, a, 'workshop', 650, 500);
+  barracks.level = 3;
   assert.throws(() => command(r, a, {type: 'train', ids: [barracks.id], unit: 'siege'}));
   command(r, a, {type: 'train', ids: [barracks.id], unit: 'healer'});
   command(r, a, {type: 'train', ids: [workshop.id], unit: 'siege'});
