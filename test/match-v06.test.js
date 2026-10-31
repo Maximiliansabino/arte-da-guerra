@@ -143,14 +143,17 @@ test('máquina: usa a segunda vaga liberada e repõe herói morto sem escolher u
   configureLobby(state,human,{action:'mode',mode:'duel'});start(state,human);
   const bot=state.players.find(p=>p.bot),base=state.entities.find(e=>e.owner===bot.id&&e.type==='base');
   const hall=spawn(state,bot,'hall',base.x-150,base.y-100),first=spawn(state,bot,'shade',base.x-80,base.y);
+  spawn(state,bot,'soldier',base.x-100,base.y+40);
   bot.heroType='shade';bot.heroTypes=['shade'];bot.gold=10000;bot.wood=10000;state.time=120;
   botTurn(state,bot,{command});assert.deepEqual(hall.queue,[]);
-  bot.heroLimit=2;state.time+=2;botTurn(state,bot,{command});
+  bot.heroLimit=2;
+  for(let i=0;i<5&&!hall.queue.length;i++){state.time+=2;botTurn(state,bot,{command});}
   assert.equal(hall.queue.length,1);assert.notEqual(hall.queue[0],'shade');
   assert.equal(bot.heroTypes.length,2);
   spawn(state,bot,hall.queue[0],base.x-100,base.y);hall.queue=[];
   state.time+=2;botTurn(state,bot,{command});assert.deepEqual(hall.queue,[],'dois vivos encerram o recrutamento');
-  first.hp=0;state.time+=2;botTurn(state,bot,{command});
+  first.hp=0;
+  for(let i=0;i<5&&!hall.queue.length;i++){state.time+=2;botTurn(state,bot,{command});}
   assert.deepEqual(hall.queue,['shade']);assert.equal(bot.heroTypes.length,2);
 });
 

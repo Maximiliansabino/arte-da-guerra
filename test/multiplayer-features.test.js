@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {server} from '../server.js';
 import {HERO_TYPES} from '../public/rules.js';
 
-test('quatro clientes recebem ataques e evolução de cidadela compartilhados entre aliados, preservando névoa inimiga', {timeout: 60000}, async () => {
+test('quatro clientes recebem ataques e evolução de cidadela compartilhados entre aliados, preservando névoa inimiga', {timeout: 120000}, async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const controller = new AbortController();
@@ -16,7 +16,7 @@ test('quatro clientes recebem ataques e evolução de cidadela compartilhados en
     return {status: response.status, body: await response.json()};
   };
   const waitFor = async predicate => {
-    const deadline = Date.now() + 50000;
+    const deadline = Date.now() + 65000;
     while (!predicate()) {
       if (Date.now() > deadline) throw Error('O estado esperado não chegou aos quatro clientes.');
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -67,6 +67,7 @@ test('quatro clientes recebem ataques e evolução de cidadela compartilhados en
       const builder = workers.slice().sort((a, b) => Math.hypot(a.x - site.x, a.y - site.y) - Math.hypot(b.x - site.x, b.y - site.y))[0];
       const built = await post('command', {type: 'build', ids: [builder.id], building: 'hall', ...site}, session);
       assert.equal(built.status, 200, JSON.stringify(built.body));
+      await waitFor(()=>latest[i].entities.some(e=>e.owner===session.id&&e.type==='hall'));
       for (let j = 0; j < workers.length; j++) {
         const resource = first[i].resources.filter(r => r.type === (j % 2 ? 'gold' : 'wood')).sort((a, b) => Math.hypot(a.x - citadel.x, a.y - citadel.y) - Math.hypot(b.x - citadel.x, b.y - citadel.y))[0];
         assert.equal((await post('command', {type: 'gather', ids: [workers[j].id], target: resource.id}, session)).status, 200);

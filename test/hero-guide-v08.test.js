@@ -71,7 +71,7 @@ test('guia: cada nome da entrada abre história, retrato, confrontos e habilidad
       assert.ok(get('guide-skills').children[n].textContent.includes(ABILITIES[id].name));
       assert.ok(get('guide-skills').children[n].textContent.includes(`${ABILITIES[id].mana} mana`));
     }
-    assert.match(get('guide-skills').children[2].textContent,/nível heroico 3/);
+    assert.match(get('guide-skills').children[2].textContent,/nível heroico 5/);
     assert.equal(doc.activeElement,get('guide-tabs').children[index]);
     get('close-hero-guide').onclick();
     assert.equal(get('hero-guide').open,false);assert.equal(doc.activeElement,trigger);

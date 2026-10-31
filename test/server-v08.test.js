@@ -5,7 +5,7 @@ import {server} from '../server.js';
 import {placementError, COST} from '../public/rules.js';
 import {planBuildingPlacement} from '../navigation.js';
 
-test('rede v0.8: versão real no site e um pedido recruta em dois quartéis com cobrança única pelo lote', {timeout:40000}, async () => {
+test('rede v0.8: versão real no site e um pedido recruta em dois quartéis com cobrança única pelo lote', {timeout:90000}, async () => {
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`, abort=new AbortController();
   const pumps=[];let state;
@@ -17,7 +17,7 @@ test('rede v0.8: versão real no site e um pedido recruta em dois quartéis com 
     return {status:response.status,body:await response.json()};
   };
   const waitFor=async(predicate,message)=>{
-    const deadline=Date.now()+15000;
+    const deadline=Date.now()+45000;
     while(!predicate()){
       assert.ok(Date.now()<deadline,message);
       await new Promise(resolve=>setTimeout(resolve,25));

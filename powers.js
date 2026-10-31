@@ -5,14 +5,19 @@ import {canSee} from './match.js';
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const validPoint=p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&p.x>=20&&p.y>=20&&p.x<=WORLD-20&&p.y<=WORLD-20;
 
-export function initializeHero(e) {
+export function initializeHero(e,player) {
   if(!STATS[e.type].hero)return;
-  e.heroLevel=1;e.xp=0;e.cooldowns={};e.inventory=[];
+  const saved=player?.heroProgress?.[e.type];
+  e.xp=Number.isFinite(saved?.xp)?Math.max(0,saved.xp):0;
+  e.heroLevel=heroLevelFromXP(e.xp);e.cooldowns={};e.inventory=[];
   e.maxMana=entityStats(e).maxMana;e.mana=e.maxMana;
 }
 export function damageEntity(r,source,target,amount) {
   if(target.hp<=0||!Number.isFinite(amount)||amount<=0||allied(r,source.owner,target.owner))return 0;
-  const adjusted=amount*structureDamageMultiplier(source,target)*(1-Math.min(.5,entityStats(target).armor||0));
+  if(target.boss&&(r.time<(target.dormantUntil||0)||target.returningHome)||source.boss&&(r.time<(source.dormantUntil||0)||source.returningHome))return 0;
+  // Static defenses cannot safely wear down the special objective from camp edges.
+  const bossDefense=target.boss&&STATS[source.type]?.building ? .25 : 1;
+  const adjusted=amount*bossDefense*structureDamageMultiplier(source,target)*(1-Math.min(.5,entityStats(target).armor||0));
   const shield=target.shieldUntil>r.time?Math.min(target.shield||0,adjusted):0;
   target.shield=Math.max(0,(target.shield||0)-shield);
   const damage=adjusted-shield;
@@ -26,17 +31,17 @@ export function emitSpell(r,e,ability,to,overrides={}) {
   r.spellEvents=r.spellEvents.slice(-256);
 }
 function applyArea(r,e,skill,to) {
-  const power=skill.power*(1+.12*((e.heroLevel||1)-1));
+  const power=skill.power*(1+.08*((e.heroLevel||1)-1));
   for(const target of r.entities){
     if(target.hp<=0||distance(target,to)>skill.radius)continue;
     const friendly=allied(r,e.owner,target.owner);
     if(skill.kind==='heal'||skill.kind==='healingZone'){
-      if(friendly)target.hp=Math.min(target.maxHp,target.hp+power);
+      if(friendly&&!STATS[target.type].building)target.hp=Math.min(target.maxHp,target.hp+power);
     }else if(skill.kind==='shield'){
-      if(friendly){target.shield=Math.max(target.shieldUntil>r.time?target.shield||0:0,power);target.shieldUntil=r.time+skill.duration;}
+      if(friendly&&!STATS[target.type].building){target.shield=Math.max(target.shieldUntil>r.time?target.shield||0:0,power);target.shieldUntil=r.time+skill.duration;}
     }else if(!friendly){
       damageEntity(r,e,target,power*heroMultiplier(e.type,target.type));
-      if(!STATS[target.type].building){
+      if(!STATS[target.type].building&&!target.boss){
         if(skill.kind==='root')target.rootUntil=Math.max(target.rootUntil||0,r.time+skill.duration);
         if(skill.kind==='slow')target.slowUntil=Math.max(target.slowUntil||0,r.time+skill.duration);
       }
@@ -129,7 +134,7 @@ export function tickPowers(r,dt) {
         if(p&&!p.defeated){
           p.troopLevel=job.level;
           for(const own of r.entities){
-            if(own.owner!==p.id||own.hp<=0||STATS[own.type].building)continue;
+            if(own.owner!==p.id||own.hp<=0||STATS[own.type].building||STATS[own.type].hero||own.type==='worker')continue;
             const oldMax=own.maxHp;
             own.level=job.level;own.maxHp=entityStats(own).hp;
             own.hp=Math.min(own.maxHp,own.hp+own.maxHp-oldMax);
@@ -151,17 +156,38 @@ export function tickPowers(r,dt) {
 export function rewardDefeated(r) {
   for(const defeated of r.entities.filter(e=>e.hp<=0&&!e.xpAwarded)){
     defeated.xpAwarded=true;
+    preserveHeroProgress(r,defeated);
+    if(defeated.boss&&r.time<(defeated.dormantUntil||0))continue;
     const killer=r.players.find(p=>p.id===defeated.lastHitOwner);
-    if(!killer||allied(r,killer.id,defeated.owner))continue;
-    const heroes=r.entities.filter(e=>e.hp>0&&STATS[e.type].hero&&allied(r,killer.id,e.owner)&&distance(e,defeated)<=350);
-    const reward=Number.isFinite(defeated.xpReward)?defeated.xpReward:STATS[defeated.type].hero?120:defeated.type==='guardian'?80:STATS[defeated.type].building?100:40;
-    for(const e of heroes){
-      e.xp+=Math.round(reward/Math.max(1,heroes.length));
+    if(!killer||killer.defeated||allied(r,killer.id,defeated.owner))continue;
+    const heroes=r.entities.filter(e=>e.hp>0&&STATS[e.type].hero&&allied(r,killer.id,e.owner)&&!r.players.find(p=>p.id===e.owner)?.defeated&&distance(e,defeated)<=350).sort((a,b)=>a.id-b.id);
+    const reward=experienceReward(defeated);
+    const share=Math.floor(reward/Math.max(1,heroes.length)),remainder=reward-share*heroes.length;
+    for(const [index,e] of heroes.entries()){
+      // Split the original integer pool once; rounding never creates extra XP.
+      e.xp+=share+(index<remainder?1:0);
       const level=heroLevelFromXP(e.xp);
       if(level>e.heroLevel){
         const oldMax=e.maxHp;e.heroLevel=level;const s=entityStats(e);e.maxHp=s.hp;e.hp=Math.min(e.maxHp,e.hp+e.maxHp-oldMax);e.maxMana=s.maxMana;e.mana=Math.min(e.maxMana,e.mana+25);
         emitSpell(r,e,'levelUp',e,{kind:'levelUp',radius:70,duration:1.4,color:'#ffe3a0'});
       }
+      preserveHeroProgress(r,e);
     }
   }
+}
+
+export function experienceReward(entity) {
+  if(STATS[entity.type]?.building)return 0;
+  if(Number.isFinite(entity.xpReward))return Math.max(0,Math.floor(entity.xpReward));
+  if(STATS[entity.type]?.hero)return 100+20*(Math.max(1,Math.min(5,entity.heroLevel||1))-1);
+  return {worker:10,soldier:40,archer:45,healer:55,siege:80,guardian:60,sentinel:100,veteran:150,colossus:250}[entity.type]||0;
+}
+
+function preserveHeroProgress(r,entity) {
+  if(!STATS[entity.type]?.hero)return;
+  const owner=r.players.find(player=>player.id===entity.owner);
+  if(!owner)return;
+  owner.heroProgress??={};
+  const xp=Math.max(owner.heroProgress[entity.type]?.xp||0,entity.xp||0);
+  owner.heroProgress[entity.type]={xp,heroLevel:heroLevelFromXP(xp)};
 }

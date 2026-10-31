@@ -58,7 +58,7 @@ test('progressão: cada jogador mantém apenas um treinamento coletivo, sem recr
   const second = spawn(state, player, 'barracks', 490, 320);
   tier(second, 3);
   command(state, player, {type: 'troopUpgrade', ids: [barracks.id]});
-  assert.deepEqual(barracks.troopUpgrade, {level: 2, remaining: 25, duration: 25});
+  assert.deepEqual(barracks.troopUpgrade, {level: 2, remaining: 35, duration: 35});
   const paid = [player.gold, player.wood];
   for (const building of [barracks, second]) {
     assert.throws(() => command(state, player, {type: 'troopUpgrade', ids: [building.id]}), /andamento/);
@@ -69,28 +69,29 @@ test('progressão: cada jogador mantém apenas um treinamento coletivo, sem recr
   assert.equal(trainingError(state, player.id, second, 'soldier'), null, 'outro quartel continua recrutando');
 });
 
-test('progressão: um treinamento melhora toda a tropa, preserva dano e XP, e vale para recrutas futuros', () => {
+test('progressão: treinamento melhora soldados e futuros recrutas, preservando trabalhadores e evolução heroica', () => {
   const {state, player, rival, barracks} = setup();
   tier(barracks, 3);
   const hero = spawn(state, player, 'bastion', 400, 400);
-  hero.heroLevel = 3; hero.xp = 200;
+  hero.heroLevel = 3; hero.xp = 320;
   hero.maxHp = entityStats(hero).hp; hero.hp = hero.maxHp - 57;
   const worker = state.entities.find(e => e.owner === player.id && e.type === 'worker');
   worker.hp -= 23;
   const oldHeroMax = hero.maxHp, oldWorkerMax = worker.maxHp;
   const enemy = state.entities.find(e => e.owner === rival.id && e.type === 'soldier');
   startTroopUpgrade(state, player, barracks);
-  tickPowers(state, 24.9);
+  tickPowers(state, 34.9);
   assert.equal(player.troopLevel || 1, 1);
   assert.equal(hero.level, 1);
   tickPowers(state, .1);
   assert.equal(player.troopLevel, 2);
   assert.equal(barracks.troopUpgrade, null);
   assert.equal(barracks.level, 3, 'prédios mantêm o nível comprado separadamente');
-  for (const entity of state.entities.filter(e => e.owner === player.id && !STATS[e.type].building)) assert.equal(entity.level, 2);
-  assert.equal(hero.heroLevel, 3); assert.equal(hero.xp, 200);
-  assert.ok(hero.maxHp > oldHeroMax); assert.equal(hero.maxHp - hero.hp, 57);
-  assert.ok(worker.maxHp > oldWorkerMax); assert.equal(worker.maxHp - worker.hp, 23);
+  for (const entity of state.entities.filter(e => e.owner === player.id && !STATS[e.type].building && !STATS[e.type].hero && e.type !== 'worker')) assert.equal(entity.level, 2);
+  assert.equal(hero.level,1); assert.equal(worker.level,1);
+  assert.equal(hero.heroLevel, 3); assert.equal(hero.xp, 320);
+  assert.equal(hero.maxHp, oldHeroMax); assert.equal(hero.maxHp - hero.hp, 57);
+  assert.equal(worker.maxHp, oldWorkerMax); assert.equal(worker.maxHp - worker.hp, 23);
   assert.equal(enemy.level, 1);
   const recruited = spawn(state, player, 'archer', 400, 450);
   assert.equal(recruited.level, 2);
@@ -101,13 +102,13 @@ test('progressão: um treinamento melhora toda a tropa, preserva dano e XP, e va
 test('progressão: segundo treinamento usa custo e duração maiores, termina no nível III e não se repete', () => {
   const {state, player, barracks} = setup();
   tier(barracks, 3);
-  startTroopUpgrade(state, player, barracks); tickPowers(state, 25);
+  startTroopUpgrade(state, player, barracks); tickPowers(state, 35);
   assert.deepEqual(collectiveUpgradeCost(player), [750, 500]);
-  assert.equal(collectiveUpgradeDuration(player), 35);
+  assert.equal(collectiveUpgradeDuration(player), 45);
   const before = [player.gold, player.wood];
   startTroopUpgrade(state, player, barracks);
   assert.deepEqual([player.gold, player.wood], [before[0] - 750, before[1] - 500]);
-  tickPowers(state, 34.9);
+  tickPowers(state, 44.9);
   assert.equal(player.troopLevel, 2);
   tickPowers(state, .1);
   assert.equal(player.troopLevel, 3);
@@ -115,7 +116,7 @@ test('progressão: segundo treinamento usa custo e duração maiores, termina no
   assert.throws(() => startTroopUpgrade(state, player, barracks), /máximo/);
   assert.deepEqual([player.gold, player.wood], paid);
   const hero = spawn(state, player, 'shade', 400, 450);
-  assert.equal(hero.level, 3, 'herói recrutado herda treinamento');
+  assert.equal(hero.level, 1, 'herói recrutado não herda treinamento militar');
   assert.equal(hero.heroLevel, 1, 'experiência continua começando no nível heroico I');
   assert.equal(hero.xp, 0);
 });
@@ -132,7 +133,7 @@ test('progressão: destruir o quartel cancela seu trabalho sem concluir nem reem
   assert.deepEqual([player.gold, player.wood], paid);
   const replacement = spawn(state, player, 'barracks', 350, 320); tier(replacement, 3);
   assert.equal(collectiveUpgradeError(state, player.id, replacement), null);
-  startTroopUpgrade(state, player, replacement); tickPowers(state, 25);
+  startTroopUpgrade(state, player, replacement); tickPowers(state, 35);
   assert.equal(player.troopLevel, 2);
   replacement.hp = 0; step(state, .1);
   assert.equal(player.troopLevel, 2, 'destruir o quartel não apaga treinamento já concluído');

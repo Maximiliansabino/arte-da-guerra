@@ -168,18 +168,18 @@ test('v0.8: painel conserva a ordem e o progresso separado de cada fila selecion
  const h=harness(),[first,second,third]=barracks(h);
  first.queue=['soldier','soldier'];first.progress=2;second.queue=['archer','soldier'];second.progress=1;
  h.run('refreshActions()');const panel=h.elements.get('#production-panel');assert.equal(panel.hidden,false);
- const list=h.elements.get('#production-list');assert.equal(list.children.length,8);
- assert.deepEqual(list.children.filter(el=>el.className==='production-building').map(el=>el.textContent),[
-  'Quartel #10 · 2/5 na fila','Quartel #11 · 2/5 na fila','Quartel #12 · 0/5 na fila'
- ]);
- assert.match(list.children[1].textContent,/1\..*Soldado.*Em produção/);
- assert.match(list.children[2].textContent,/2\..*Soldado.*Em espera/);
- assert.match(list.children[4].textContent,/1\..*Arqueiro.*Em produção/);
- assert.match(list.children[5].textContent,/2\..*Soldado.*Em espera/);
- assert.match(list.children[7].textContent,/Fila livre/);
- const before=list.children[1].children[2].value;
- first.progress+=1;h.run('refreshActions()');assert.ok(list.children[1].children[2].value>before);
- assert.equal(list.children[2].children.length,2,'quem aguarda não exibe progresso de outra unidade');
+ const list=h.elements.get('#production-list'),nav=h.elements.get('#production-nav');assert.equal(list.children.length,2);
+ assert.match(list.children[0].textContent,/1\..*Soldado.*Em produção/);
+ assert.match(list.children[1].textContent,/2\..*Soldado.*Em espera/);
+ const before=list.children[0].children[2].value;
+ first.progress+=1;h.run('refreshActions()');assert.ok(list.children[0].children[2].value>before);
+ assert.equal(list.children[1].children.length,2,'quem aguarda não exibe progresso de outra unidade');
+ nav.children[1].onclick();
+ assert.match(list.children[0].textContent,/1\..*Arqueiro.*Em produção/);
+ assert.match(list.children[1].textContent,/2\..*Soldado.*Em espera/);
+ nav.children[1].onclick();assert.equal(list.children.length,0);
+ assert.equal(h.elements.get('#production-empty').hidden,false);
+ nav.children[1].onclick();assert.match(list.children[0].textContent,/1\..*Soldado/);
 });
 
 test('v0.8: múltiplos salões não duplicam heróis, salão individual mantém seis escolhas',()=>{

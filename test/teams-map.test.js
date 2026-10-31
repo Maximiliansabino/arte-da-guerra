@@ -40,7 +40,7 @@ test('máquina aliada escolhe base inimiga e nunca a do anfitrião',()=>{
  const staging={x:home.x+(home.x<900?185:-185),y:home.y};
  const soldiers=r.entities.filter(e=>e.owner===bot.id&&e.type==='soldier');soldiers[0].x=staging.x;soldiers[0].y=staging.y;
  for(let n=1;n<8;n++)soldiers.push(spawn(r,bot,'soldier',staging.x+(n%3)*10,staging.y+Math.floor(n/3)*10));
- r.time=100;r.tick=19;step(r);
+ r.time=160;r.tick=19;step(r);
  assert.ok(soldiers.every(soldier=>soldier.order?.type==='attackMove'));
  for(const soldier of soldiers){assert.ok(Math.hypot(soldier.order.x-base.x,soldier.order.y-base.y)<80);assert.ok(Math.hypot(soldier.order.x-home.x,soldier.order.y-home.y)>300);}
 });

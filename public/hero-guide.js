@@ -37,7 +37,7 @@ export const HERO_LORE = {
     role:'Apoio versátil e contenção',
     story:'O Guardião do Luar é uma lenda original deste mundo, nascida das vigílias sobre as muralhas da Fronteira. Ele aprendeu a orientar as companhias pelo céu quando as estradas desapareceram sob a neblina. Hoje acompanha os defensores, reúne os feridos sob o luar e marca o lugar onde o avanço inimigo deve parar.',
     strengths:['Combina dano em área com cura para apoiar uma companhia reunida.', 'A suprema prende adversários e favorece ataques coordenados do bonde.'],
-    weaknesses:['Seu ataque básico alcança menos que o de Iara e Cuca.', 'Não tem deslocamento de fuga; a imobilização da suprema só libera no nível heroico 3.']
+    weaknesses:['Seu ataque básico alcança menos que o de Iara e Cuca.', 'Não tem deslocamento de fuga; a imobilização da suprema só libera no nível heroico 5.']
   }
 };
 
@@ -56,6 +56,13 @@ export function initHeroGuide(doc=document) {
   if(dialog.heroGuideController)return dialog.heroGuideController;
   const tabs=get('guide-tabs'), panel=get('guide-panel');
   const buttons=new Map();let selected=HERO_TYPES[0], opener=null;
+  function page(name) {
+    panel.setAttribute('data-page',name);
+    for(const id of ['story','strategy','skills']) {const button=get(`guide-page-${id}`);if(button){button.setAttribute('aria-selected',String(id===name));button.classList.toggle('active',id===name);}}
+    for(const [id,group] of [['guide-identity','story'],['guide-overview','story'],['guide-traits','strategy'],['guide-matchups','strategy'],['guide-abilities','skills']]){const section=get(id);if(section)section.hidden=group!==name;}
+  }
+  for(const name of ['story','strategy','skills']){const button=get(`guide-page-${name}`);if(button)button.onclick=()=>page(name);}
+  page('story');
   function list(id,items) {
     const container=get(id);container.replaceChildren();
     for(const text of items){const li=doc.createElement('li');li.textContent=text;container.append(li);}

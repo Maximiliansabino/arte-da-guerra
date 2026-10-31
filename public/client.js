@@ -13,18 +13,20 @@ import {createAudio} from './audio.js';
 import {allied} from './rules.js';
 import {
   WORLD, COST, STATS, HEROES, HERO_TYPES, BUILDING_TYPES, LABELS, ICONS,
-  BUILD_RULES, MAX_LEVEL, entityStats, upgradeCost, upgradeDuration,
+  BUILD_RULES, CONSTRUCTION_DURATION, MAX_LEVEL, entityStats, upgradeCost, upgradeDuration,
   trainDuration, placementError, connectedBuildings, trainingError,
   collectiveUpgradeCost, collectiveUpgradeDuration, collectiveUpgradeError, combatResearchError
 } from './rules.js';
 import {createCombatEffects} from './combat-effects.js';
 
-const $=s=>document.querySelector(s), canvas=$('#map'),ctx=canvas.getContext('2d');
+const $=s=>document.querySelector(s), canvas=$('#map');
+let ctx=canvas.getContext('2d');
 const colors = TEAM_COLORS;
 const sceneArt = createSceneArt(), spellEffects = createSpellEffects(), audio = createAudio();
 let spellTarget = null, attackTarget = false, rallyTarget = null, workTarget = null, rosterKey = '', idleKey = '';
 let lastSoundId = 0, lastSpellSoundId = 0, soundRoom = null;
 let heroNoticeRoom = null, lastHeroCapacity = null;
+let actionTab=null, actionSelection='', productionViewId=null, productionNavKey='', hudMinimap=null;
 const controlGroups = new Map();
 let controlRoom = null, controlKey = '', activeHeroId = null;
 const reducedMotion=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false;
@@ -63,9 +65,10 @@ $('#create').onclick=()=>enter('create');$('#join').onclick=()=>enter('join');$(
 $('#mode').onchange = () => lobbyAction({action: 'mode', mode: $('#mode').value});
 $('#difficulty').onchange = () => lobbyAction({action: 'difficulty', difficulty: $('#difficulty').value});
 $('#map-choice').onchange = () => lobbyAction({action: 'map', mapId: $('#map-choice').value});
+$('#bot-count').onchange = () => lobbyAction({action:'botCount',count:Number($('#bot-count').value)});
 $('#faction').onchange = () => lobbyAction({action: 'faction', slot: mine()?.slot, faction: $('#faction').value});
 $('#audio').onclick = () => {audio.unlock(); audio.setMuted(!audio.muted); updateAudioButton();};
-function updateAudioButton() {$('#audio').textContent = audio.muted ? 'Som desligado' : 'Som ligado'; $('#audio').setAttribute('aria-pressed', String(!audio.muted));}
+function updateAudioButton() {$('#audio').textContent = audio.muted ? 'Som desligado' : 'Som ligado'; $('#audio').setAttribute('aria-pressed', String(!audio.muted));$('#game-audio').setAttribute('aria-pressed',String(!audio.muted));$('#game-audio').title=audio.muted?'Ativar som':'Silenciar som';}
 updateAudioButton();
 $('#mode').replaceChildren(); $('#faction').replaceChildren(); $('#difficulty').replaceChildren(); $('#training-difficulty').replaceChildren();
 for (const [id, mode] of Object.entries(MODES)) {const option = document.createElement('option'); option.value = id; option.textContent = mode.name; $('#mode').append(option);}
@@ -78,7 +81,15 @@ for(const selector of ['#map-choice','#training-map']){
  $(selector).value=DEFAULT_MAP;
 }
 $('#help').onclick=()=>$('#instructions').showModal();$('#closehelp').onclick=()=>$('#instructions').close();
-initHeroGuide();
+const heroGuide=initHeroGuide();
+$('#game-guide').onclick=()=>heroGuide?.open?.();
+$('#game-help').onclick=()=>$('#instructions').showModal();
+$('#game-audio').onclick=()=>$('#audio').onclick();
+$('#game-fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen?.();else if(document.documentElement?.requestFullscreen)await document.documentElement.requestFullscreen();else toast('A partida já ocupa toda a janela. Use a opção de tela cheia do navegador.');}catch{toast('Não foi possível ativar tela cheia. A partida continua nesta janela.');}};
+$('#selection-inspect').onclick=()=>{$('#selection-info-title').textContent=$('#selection').textContent;$('#selection-info-detail').textContent=[$('#detail').textContent,$('#hero-status').textContent,$('#activity-status').textContent].filter(Boolean).join(' · ');$('#selection-info').showModal();};
+$('#selection-info-close').onclick=()=>$('#selection-info').close();
+function lobbyPage(page){for(const name of ['settings','players']){$(`#lobby-${name}-page`).hidden=name!==page;$(`#lobby-${name}-tab`).setAttribute('aria-selected',String(name===page));}}
+$('#lobby-settings-tab').onclick=()=>lobbyPage('settings');$('#lobby-players-tab').onclick=()=>lobbyPage('players');
 $('#copy').onclick=async()=>{const url=new URL(location.href);url.search=`?room=${session.code}`;try{await navigator.clipboard.writeText(url.href);toast('Convite copiado. Envie aos seus amigos!');}catch{toast(`Código da sala: ${session.code}`);}};
 $('#start').onclick=async()=>{try{await lobbyQueue;await api('start',{});}catch(e){toast(e.message);}};
 async function leaveRoom(){
@@ -92,7 +103,6 @@ $('#surrender').onclick=()=>{if(state?.phase==='playing'&&confirm('Render-se eli
 function showGame(){$('#welcome').hidden=true;$('#game').hidden=false;$('#sitefooter').hidden=true;$('#roomcode').textContent=session.code;resize();connect();}
 async function connect(){if(reconnecting)return;reconnecting=true;let first=true;
  while(session){try{streamController=new AbortController();const res=await fetch(`/api/events?room=${session.code}`,{headers:{Authorization:`Bearer ${session.token}`},signal:streamController.signal});if(!res.ok){sessionStorage.removeItem('arte-da-guerra-session');session=null;$('#game').hidden=true;$('#welcome').hidden=false;$('#sitefooter').hidden=false;toast('A sala foi encerrada. Crie uma nova ou entre por um convite.');break;}$('#connection').textContent='● Servidor conectado · 10 atualizações/s';const reader=res.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let idx;while((idx=buffer.indexOf('\n\n'))>=0){const msg=buffer.slice(0,idx);buffer=buffer.slice(idx+2);if(msg.startsWith('data: ')){state=JSON.parse(msg.slice(6));receiveEffects();if(first&&state.entities.length){home();first=false;}updateUI();}}} }catch{}
- if(!session)break;
  $('#connection').textContent='◌ Conexão interrompida · reconectando…';await new Promise(r=>setTimeout(r,1500));
  }reconnecting=false;}
 let lobbyQueue=Promise.resolve(),lobbyPending=0;
@@ -121,7 +131,7 @@ async function recruit(unit, ids) {
 }
 function receiveEffects() {
  const now = performance.now();
- combatEffects.ingest(state, now); spellEffects.ingest(state, now);
+ combatEffects.ingest(state, now); spellEffects.ingest(state, now);sceneArt.ingest?.(state,now);
  if (soundRoom !== state.code) {lastSoundId = lastSpellSoundId = 0; soundRoom = state.code;}
  for (const event of state.combatEvents || []) {
   if (event.id > lastSoundId && state.time - event.at < .35) audio.attack(event);
@@ -147,17 +157,23 @@ function updateUI() {
  $('#clock').textContent = `${Math.floor(state.time / 60).toString().padStart(2,'0')}:${Math.floor(state.time % 60).toString().padStart(2,'0')}`;
  const host = state.players[0].id === p.id, mode = MODES[state.mode || 'ffa'];
  $('#phase').textContent = state.phase === 'lobby' ? 'Reúna sua expedição' : state.phase === 'finished' ? 'A lenda foi escrita' : p.defeated ? 'Cidadela caída · acompanhando aliados' : `${FACTIONS[p.faction]?.name || 'Lendas da Fronteira'} · Time ${p.team + 1}`;
+ $('#game').classList.toggle('lobby-phase',state.phase==='lobby');
  $('#lobby').hidden = state.phase !== 'lobby'; $('#end').hidden = state.phase !== 'finished';
- if (!lobbyPending) {$('#mode').value = state.mode || 'ffa'; $('#faction').value = p.faction || 'mata'; $('#difficulty').value = state.difficulty || DEFAULT_DIFFICULTY;$('#map-choice').value=state.mapId || DEFAULT_MAP;}
+ if (!lobbyPending) {$('#mode').value = state.mode || 'ffa'; $('#faction').value = p.faction || 'mata'; $('#difficulty').value = state.difficulty || DEFAULT_DIFFICULTY;$('#map-choice').value=state.mapId || DEFAULT_MAP;$('#bot-count').value=String(state.botCount || 0);}
  $('#mode').disabled = !host || state.phase !== 'lobby' || lobbyPending > 0;
  $('#faction').disabled = state.phase !== 'lobby' || lobbyPending > 0;
  $('#difficulty').disabled = !host || state.phase !== 'lobby' || lobbyPending > 0;
  $('#map-choice').disabled = !host || state.phase !== 'lobby' || lobbyPending > 0;
+ $('#bot-count-setting').hidden=state.mode!=='coop';
+ $('#bot-count').disabled=!host||state.phase!=='lobby'||lobbyPending>0;
+ const humans=state.players.filter(member=>!member.bot).length;
+ const bots=state.resolvedBotCount ?? (state.botCount || humans);
+ $('#match-summary').textContent=state.mode==='coop'?`${humans} jogador${humans===1?'':'es'} contra ${bots} máquina${bots===1?'':'s'}`:state.mode==='duel'?'1 jogador contra 1 máquina':state.mode==='duos'?'2 contra 2 · vagas livres recebem máquinas':`${state.players.length} comandantes · times definidos abaixo`;
  $('#maphint').textContent=`${battlefield.description} Posições iniciais sorteadas a cada partida; aliados permanecem do mesmo lado nos modos de equipe.`;
  $('#difficultyhint').textContent = DIFFICULTIES[state.difficulty || DEFAULT_DIFFICULTY]?.description || '';
  $('#modehint').textContent = mode?.description || '';
  $('#factionhint').textContent = FACTIONS[p.faction || 'mata']?.description || '';
- const key = JSON.stringify([state.mode, host, state.players.map(member => [member.id,member.name,member.team,member.slot,member.bot,member.faction])]);
+ const key = JSON.stringify([state.mode, state.botCount, state.resolvedBotCount, host, state.players.map(member => [member.id,member.name,member.team,member.slot,member.bot,member.faction])]);
  if (key !== rosterKey) {
   rosterKey = key;
   const roster = $('#players'); roster.replaceChildren();
@@ -165,8 +181,8 @@ function updateUI() {
    const member = state.players.find(member => member.slot === slot), el = document.createElement('div');
    el.className = 'player lobby-row' + (!member ? ' empty' : ''); el.style.setProperty('--p', colors[slot]);
    const name = document.createElement('span');
-   const autoBot = state.mode === 'coop' && slot >= 4 || state.mode === 'duel' && slot === 1;
-   name.textContent = member ? `${member.name}${member.id === p.id ? ' · você' : ''} · ${member.bot ? 'Máquina' : 'Jogador'}` : autoBot ? 'Máquina ao iniciar' : 'Vaga para amigo';
+   const autoBot = state.mode === 'coop' && slot >= 4 && slot < 4+bots || state.mode === 'duel' && slot === 1;
+   name.textContent = member ? `${member.name}${member.id === p.id ? ' · você' : ''} · ${member.bot ? 'Máquina' : 'Jogador'}` : autoBot ? 'Máquina ao iniciar' : state.mode==='coop'&&slot>=4?'Vaga de máquina desativada':'Vaga para amigo';
    el.append(name);
    if (member) {
     const team = document.createElement('select'); team.setAttribute('aria-label', `Time da vaga ${slot + 1}`);
@@ -188,7 +204,7 @@ function updateUI() {
  const autoStart = ['duel','duos','coop'].includes(state.mode);
  $('#start').disabled = lobbyPending > 0 || !host || (!autoStart && (state.players.length < 2 || new Set(state.players.map(member=>member.team)).size < 2));
  $('#lobbyhint').textContent = !host ? 'O anfitrião inicia a partida; você pode escolher sua ordem.' :
-  state.mode === 'coop' ? 'Convide até três amigos. Quatro máquinas entrarão no time adversário ao iniciar.' :
+  state.mode === 'coop' ? `Convide até três amigos. ${bots} máquina${bots===1?'':'s'} no time adversário; o anfitrião pode ajustar a quantidade.` :
   state.mode === 'duel' ? 'Treino individual: uma máquina será sua adversária.' :
   state.mode === 'duos' ? 'Dois times de dois. Vagas livres serão preenchidas por máquinas ao iniciar.' :
   'Organize os times e adicione máquinas nas vagas livres. São necessários dois times adversários.';
@@ -300,6 +316,8 @@ function activityLabel(e) {
  if(activity.type==='rooted')return 'Imobilizado temporariamente';
  if(activity.type==='gathering')return `${(activity.resourceType || resource?.type)==='gold'?'Minerando ouro':'Coletando madeira'}${resource?' · recurso '+Math.ceil(resource.amount):''}`;
  if(activity.type==='attacking')return targetName?`Atacando: ${targetName}`:'Em combate';
+ if(e.order?.type==='build'&&activity.type==='moving')return `Caminhando para construir ${labels[e.order.building] || 'estrutura'} · cobrança ao iniciar`;
+ if(activity.type==='waiting')return activity.reason || 'Aguardando uma vaga para reparar';
  if(activity.type==='repairing')return `Consertando: ${targetName || 'estrutura aliada'} · 3 vida/s`;
  if(activity.type==='healing')return `Curando: ${targetName || 'unidade aliada'}`;
  if(activity.type==='moving')return targetName?`Indo até: ${targetName}`:e.order?.type==='attackMove'?'Avançando e procurando adversários':'Em deslocamento';
@@ -346,7 +364,7 @@ function productionRows(e) {
    status:index?'Em espera':ready?'Pronto · aguardando saída livre':`Em produção · ${percent}% · ${Math.ceil(duration-progress)} s restantes`};
  });
  let name,remaining,duration;
- if(e.construct){name=`Construindo ${labels[e.type]}`;remaining=e.construct;duration=10;}
+ if(e.construct){name=`Construindo ${labels[e.type]}`;remaining=e.construct;duration=e.constructDuration || 10;}
  else if(e.upgrade){name=`Evoluindo ${labels[e.type]} para nível ${e.upgrade.level}`;({remaining,duration}=e.upgrade);}
  else if(e.researchJob){name=`Pesquisando ${RESEARCH[e.researchJob.id]?.name || 'melhoria'}`;({remaining,duration}=e.researchJob);}
  else if(e.troopUpgrade){name=`Treinamento coletivo ${['','I','II','III'][e.troopUpgrade.level]}`;({remaining,duration}=e.troopUpgrade);}
@@ -357,26 +375,20 @@ function productionRows(e) {
 function updateProductionPanel(units) {
  const buildings=units.filter(e=>BUILDING_TYPES.includes(e.type)&&e.owner===session?.id&&e.hp>0).sort((a,b)=>a.id-b.id),panel=$('#production-panel');
  panel.hidden=!buildings.length || state?.phase!=='playing' || mine()?.defeated;
- if(panel.hidden){$('#production-list').replaceChildren();return;}
- const e=buildings[0];
+ if(panel.hidden){$('#production-list').replaceChildren();$('#production-nav').replaceChildren();productionViewId=null;productionNavKey='';return;}
+ if(!buildings.some(e=>e.id===productionViewId))productionViewId=buildings[0].id;
+ const e=buildings.find(e=>e.id===productionViewId),index=buildings.indexOf(e),nav=$('#production-nav');
+ const navKey=JSON.stringify([buildings.map(e=>e.id),productionViewId]);
+ if(navKey!==productionNavKey){productionNavKey=navKey;nav.replaceChildren();
  if(buildings.length>1){
-  $('#production-title').textContent=`Produção de ${buildings.length} construções · filas independentes`;
-  $('#production-empty').hidden=true;
-  const list=$('#production-list');list.replaceChildren();
-  for(const producer of buildings){
-   const heading=document.createElement('li');heading.className='production-building';
-   heading.textContent=`${labels[producer.type]} #${producer.id} · ${producer.queue?.length || 0}/5 na fila`;
-   list.append(heading);
-   const rows=productionRows(producer);
-   if(!rows.length)rows.push({name:'Fila livre',active:false,status:'Nenhum pedido nesta construção.'});
-   for(const row of rows)appendProductionRow(list,row);
-  }
-  return;
+  for(const [delta,label] of [[-1,'‹'],[1,'›']]){const button=document.createElement('button');button.textContent=label;button.title=delta<0?'Fila da construção anterior':'Fila da próxima construção';button.setAttribute('aria-label',button.title);button.onclick=()=>{productionViewId=buildings[(index+delta+buildings.length)%buildings.length].id;updateProductionPanel(state.entities.filter(e=>selected.has(e.id)));};nav.append(button);}
+  const count=document.createElement('span');count.textContent=`${index+1}/${buildings.length}`;nav.append(count);
+ }
  }
  const rows=productionRows(e),producer=['base','barracks','hall','workshop'].includes(e.type);
  if(!rows.length&&!producer){panel.hidden=true;return;}
  const waiting=Math.max(0,(e.queue?.length || 0)-1);
- $('#production-title').textContent=e.queue?.length?`Fila de produção · ${e.queue.length}/5 · ${waiting} em espera`:rows.length?'Atividade da construção':'Fila de produção · livre';
+ $('#production-title').textContent=`${labels[e.type]} #${e.id} · ${e.queue?.length || 0}/5${waiting?` · ${waiting} em espera`:rows.length?' · em atividade':' · fila livre'}`;
  const list=$('#production-list');list.replaceChildren();
  $('#production-empty').hidden=rows.length>0;
  for(const row of rows)appendProductionRow(list,row);
@@ -388,6 +400,18 @@ function appendProductionRow(list,row){
   item.append(name,status);
   if(row.active){const bar=document.createElement('progress');bar.max=100;bar.value=row.percent;bar.setAttribute('aria-label',`Progresso de ${row.name}`);item.append(bar);}
   list.append(item);
+}
+const ACTION_GROUPS={recruit:'Recrutar',skills:'Habilidades',work:'Trabalho',build:'Construir',items:'Inventário',shop:'Mercado',upgrades:'Evoluir',orders:'Ordens'};
+function layoutActions(preferred) {
+ const actions=$('#actions'),tabs=$('#action-tabs'),children=Array.from(actions.children);
+ const groups=[...new Set(children.filter(child=>child.tagName==='BUTTON').map(child=>child.actionCategory || 'orders'))];
+ if(!groups.includes(actionTab))actionTab=groups.includes(preferred)?preferred:groups[0] || null;
+ tabs.replaceChildren();
+ for(const group of groups){const tab=document.createElement('button');tab.textContent=ACTION_GROUPS[group];tab.setAttribute('role','tab');tab.setAttribute('aria-selected',String(group===actionTab));tab.classList.toggle('active',group===actionTab);tab.onclick=()=>{actionTab=group;layoutActions(preferred);};tabs.append(tab);}
+ const notes=[];
+ for(const child of children){child.hidden=(child.actionCategory || 'orders')!==actionTab;if(child.classList.contains('action-note')){child.hidden=true;if(child.actionCategory===actionTab)notes.push(child.textContent);}}
+ $('#action-context').textContent=notes.join(' ');$('#action-context').title=notes.join(' ');
+ actions.classList.toggle('hero-recruit-grid',actionTab==='recruit'&&children.some(child=>child.classList.contains('hero-card')));
 }
 function refreshActions() {
  syncControlGroups();
@@ -407,7 +431,7 @@ function refreshActions() {
  if (NEUTRAL_TYPES.includes(e?.type)) {const index = NEUTRAL_TYPES.indexOf(e.type);$('#portrait').textContent='';$('#portrait').style.backgroundSize='200% 200%';$('#portrait').style.backgroundPosition=`${index%2*100}% ${Math.floor(index/2)*100}%`;}
  $('#hero-status').textContent = heroic ? `Lenda ${e.heroLevel || 1}/5 · Mana ${Math.floor(e.mana || 0)}/${Math.floor(e.maxMana || stats?.maxMana || 150)} · XP ${Math.floor(e.xp || 0)}${(e.heroLevel || 1) < 5 ? '/' + HERO_XP[e.heroLevel || 1] : ' · máximo'}` : '';
  $('#hero-status').hidden = !heroic;
- const detail = e ? [`${BUILDING_TYPES.includes(e.type)?'Nível':'Treinamento coletivo'} ${e.level || 1}/${MAX_LEVEL}`, `${Math.ceil(e.hp)} / ${e.maxHp} de vida`] : [];
+ const detail = e ? [HEROES[e.type]?`Nível heroico ${e.heroLevel || 1}/5`:e.type==='worker'?'Trabalhador':`${BUILDING_TYPES.includes(e.type)?'Nível':'Treinamento coletivo'} ${e.level || 1}/${MAX_LEVEL}`, `${Math.ceil(e.hp)} / ${e.maxHp} de vida`] : [];
  if (e?.construct) detail.push(`Construção: ${Math.ceil(e.construct)} s`);
  if (e?.upgrade) detail.push(`Evoluindo para nível ${e.upgrade.level}: ${Math.ceil(e.upgrade.remaining)} s`);
  if (e?.researchJob) detail.push(`Pesquisa: ${RESEARCH[e.researchJob.id]?.name} · ${Math.ceil(e.researchJob.remaining)} s`);
@@ -418,13 +442,13 @@ function refreshActions() {
  if (e?.queue.length) detail.push(e.progress+1e-9>=trainDuration(e.queue[0],e)?`${labels[e.queue[0]]} pronto · aguardando saída livre`:`Produzindo ${labels[e.queue[0]]} · ${Math.max(0, Math.ceil(trainDuration(e.queue[0], e) - e.progress))} s`);
  if (stats?.damage) detail.push(`Ataque ${stats.damage} · alcance ${stats.range}`);
  if (stats?.heal) detail.push(`Cura automática ${stats.heal} a cada 1,5 s`);
- if (stats?.siege) detail.push('Dano dobrado contra estruturas');
+ if (stats?.siege) detail.push('Especialista em estruturas · frágil a curta distância');
  if (stats?.fortification) detail.push(`Fortificação: −${Math.round(stats.fortification*100)}% de dano comum e magias; cerco ignora`);
  if (stats?.gather) detail.push(`Coleta ${stats.gather.toFixed(1)}/s`);
  if (NEUTRAL_TYPES.includes(e?.type)) detail.push(`${CAMP_TYPES[e.neutralTier]?.label || 'Mercenário'} · recompensa ${e.goldReward || 0} ouro · retorna 2 min após morrer`);
- if (e?.boss) detail.push('Golpe final libera a 2ª vaga de herói. Saia do círculo antes do impacto');
+ if (e?.boss) detail.push((e.dormantUntil>state.time?`Adormecido · desperta em ${Math.ceil(e.dormantUntil-state.time)} s. `:'')+'Golpe final libera a 2ª vaga de herói. Saia do círculo antes do impacto');
  if (HEROES[e?.type]) detail.push(`Vantagem: ${labels[HEROES[e.type].strongAgainst]} · Fraqueza: ${labels[HEROES[e.type].weakAgainst]}`);
- $('#detail').textContent = e ? detail.join(' · ') : 'Clique ou arraste para selecionar';
+ $('#detail').textContent = e ? detail.join(' · ') : 'Clique ou arraste para selecionar';$('#detail').title=$('#detail').textContent;
  const activity=e&&e.owner===session?.id?activityOf(e):null;
  $('#activity-status').hidden=!activity;
  $('#activity-status').textContent=activity?activityLabel(e):'';
@@ -441,7 +465,7 @@ function refreshActions() {
   [...recruitmentPlans].map(([unit,plan])=>[unit,plan.count,plan.cost,plan.error,plan.skipped]),state?ownPopulation():0,
   state?.phase, p?.defeated, p?.heroType, p?.heroTypes, heroCapacity(p), e ? heroInPlay() : false,
   state?.entities.filter(item=>item.owner===session?.id&&(HEROES[item.type]||item.queue?.some(type=>HEROES[type]))).map(item=>[item.id,item.type,item.queue]),
-  e?.heroLevel, e ? e.hp >= e.maxHp : false, e ? e.mana >= e.maxMana : false, Math.floor(e?.mana || 0), Object.entries(e?.cooldowns || {}).map(([id,remaining])=>[id,Math.ceil(remaining)]), e?.inventory, p?.research, state?.entities.filter(item=>item.owner===session?.id&&item.researchJob).map(item=>[item.id,item.researchJob.id]), e?.researchJob?.id, e?.researchJob ? Math.ceil(e.researchJob.remaining) : 0,
+  e?.heroLevel, e ? e.hp >= e.maxHp : false, e ? e.mana >= e.maxMana : false, (HERO_ABILITIES[e?.type] || []).map(id=>(e.mana || 0)>=ABILITIES[id].mana), Object.entries(e?.cooldowns || {}).map(([id,remaining])=>[id,Math.ceil(remaining)]), e?.inventory, p?.research, state?.entities.filter(item=>item.owner===session?.id&&item.researchJob).map(item=>[item.id,item.researchJob.id]), e?.researchJob?.id, e?.researchJob ? Math.ceil(e.researchJob.remaining) : 0,
   Object.values(ITEMS).map(item=>affordable(item.cost)), Object.keys(RESEARCH).map(id=>affordable(researchCost(p || {},id))),
   e ? nearShop(e) : false, costFlags, e && BUILDING_TYPES.includes(e.type) ? affordable(upgradeCost(e)) : false, e ? ownPopulation() >= 65 : false,
   nearbyResource('gold')?.id,nearbyResource('wood')?.id,nearbyRepair()?.id,
@@ -451,16 +475,18 @@ function refreshActions() {
  if (key === selectionKey) return;
  selectionKey = key;
  const actions = $('#actions');
- actions.replaceChildren();
+ const actionIdentity=JSON.stringify([[...selected],activeHeroId]);if(actionIdentity!==actionSelection){actionSelection=actionIdentity;actionTab=null;}
+ actions.replaceChildren();$('#action-tabs').replaceChildren();$('#action-context').textContent='';
+ let category='orders';
  actions.classList.toggle('hero-actions', e?.type === 'hall');
  $('.commanddeck').classList.toggle('hero-selection', e?.type === 'hall');
  if (!e || e.owner !== session.id || state.phase !== 'playing' || p.defeated) return;
  const note = text => {
-  const el = document.createElement('p'); el.className = 'action-note'; el.textContent = text;
+  const el = document.createElement('p'); el.className = 'action-note'; el.textContent = text;el.actionCategory=category;
   actions.append(el); return el;
  };
  const button = (title, cost, fn, reason = '', description = '') => {
-  const b = document.createElement('button'); b.className = 'action';
+  const b = document.createElement('button'); b.className = 'action';b.actionCategory=category;
   const titleEl = document.createElement('span'); titleEl.textContent = title;
   const sub = document.createElement('small'); sub.textContent = cost;
   b.append(titleEl, sub);
@@ -468,7 +494,7 @@ function refreshActions() {
   b.disabled = !!reason; b.title = reason || description || title; b.onclick = fn;
   actions.append(b); return b;
  };
- if (e.construct&&units.length===1) {note('Aguarde a construção terminar para recrutar ou evoluir.'); return;}
+ if (e.construct&&units.length===1) {$('#action-context').textContent='Aguarde a construção terminar para recrutar ou evoluir.';return;}
  const train = unit => {
   const matching=producers.filter(b=>b.type===trainerFor(unit)),ids=matching.map(b=>b.id);
   const plan=recruitmentPlans.get(unit),bulk=matching.length>1;
@@ -476,20 +502,22 @@ function refreshActions() {
   const duration=times.length?`${seconds(Math.min(...times))}${Math.max(...times)!==Math.min(...times)?'–'+seconds(Math.max(...times)):''} s`:'';
   const description=[bulk?`Um em cada construção apta: ${plan.count}/${matching.length}.`:'',
    ...plan.skipped.map(item=>`${labels[trainerFor(unit)]} #${item.id}: ${item.reason}`),
-   unit==='healer'?'Cura automaticamente aliados próximos.':unit==='siege'?'Ataca além do alcance das torres. Dano dobrado contra construções; ignora fortificação.':''].filter(Boolean).join(' ');
+   unit==='healer'?'Cura automaticamente aliados próximos.':unit==='siege'?'Ataca além do alcance das torres e ignora fortificação. Vulnerável se os soldados se aproximarem.':''].filter(Boolean).join(' ');
   button(`${icons[unit]} ${labels[unit]}${bulk?` × ${plan.count}`:''}`, `${costText(plan.cost)}${bulk?' no total':''} · ${duration}`,
    () => recruit(unit,ids), plan.error || '', description).classList.add('recruit-action');
  };
+ category='recruit';
  if (producers.some(b=>b.type==='base')) train('worker');
  if (producers.some(b=>b.type==='barracks')) {
   note('Quartel I: soldados · II: arqueiros · III: curadores e melhorias coletivas.');
   train('soldier'); train('archer'); train('healer');
   if(units.length===1&&(p.troopLevel || 1)<MAX_LEVEL){
-   const next=(p.troopLevel || 1)+1,reason=collectiveUpgradeError(state,p.id,e);
+   category='upgrades';const next=(p.troopLevel || 1)+1,reason=collectiveUpgradeError(state,p.id,e);
    button(`⇈ Treinamento coletivo ${['','I','II','III'][next]}`,`${costText(collectiveUpgradeCost(p))} · ${collectiveUpgradeDuration(p)} s`,
-    ()=>send({type:'troopUpgrade',ids:[e.id]}),reason,reason || 'Melhora trabalhadores, tropas e herói, atuais e futuros. A experiência do herói continua separada.').classList.add('collective-action');
+    ()=>send({type:'troopUpgrade',ids:[e.id]}),reason,reason || 'Melhora as tropas militares atuais e futuras. Trabalhadores e heróis evoluem separadamente.').classList.add('collective-action');
   } else if((p.troopLevel || 1)>=MAX_LEVEL)note('Treinamento coletivo III concluído para toda a companhia.');
  }
+ category='recruit';
  if (producers.some(b=>b.type==='workshop')) train('siege');
  if (e.type === 'hall'&&units.length===1) {
   const chosen=chosenHeroes(p),capacity=heroCapacity(p);
@@ -513,6 +541,7 @@ function refreshActions() {
   }
  }
  if (units.some(unit => unit.owner === p.id && unit.type === 'worker')) {
+  category='work';
   for(const [type,title,icon] of [['gold','Minerar ouro','◆'],['wood','Coletar madeira','❧']]){
    const resource=nearbyResource(type);
    button(`${icon} ${title}`,resource?'Recurso próximo · iniciar coleta':'Clique no recurso do mapa',
@@ -522,15 +551,17 @@ function refreshActions() {
   const damaged=nearbyRepair();
   button('⚒ Consertar estrutura',damaged?`${labels[damaged.type]} próxima · 3 vida/s`:'Escolher estrutura · 3 vida/s',
    ()=>damaged?send({type:'repair',ids:selectedWorkers().map(worker=>worker.id),target:damaged.id}):armWork('repair'),'','Recupera estruturas danificadas suas ou de aliados. Sem custo de recursos.').classList.add('work-action');
+  category='build';
   for (const type of ['barracks', 'tower', 'hall', 'workshop']) {
-   button(`${icons[type]} ${labels[type]}`, `${costText(COST[type])} · 10 s`,
+   button(`${icons[type]} ${labels[type]}`, `${costText(COST[type])} · ${CONSTRUCTION_DURATION[type]} s`,
     () => setBuild(type), affordable(COST[type]) ? '' : 'Ouro ou madeira insuficientes.', type==='tower'?'Defende contra pequenos ataques. Apoie com tropas: máquinas de cerco atacam de fora do alcance e ignoram fortificação.':'');
   }
  }
  if (heroic) {
+  category='skills';
   const heroes=selectedHeroes();
   if(heroes.length>1){
-   const tabs=document.createElement('div');tabs.className='hero-tabs';tabs.setAttribute('aria-label','Herói ativo do bonde');
+   const tabs=document.createElement('div');tabs.className='hero-tabs';tabs.actionCategory=category;tabs.setAttribute('aria-label','Herói ativo do bonde');
    for(const hero of heroes){const tab=document.createElement('button');tab.className='hero-tab';tab.classList.toggle('active',hero.id===e.id);tab.textContent=`${icons[hero.type]} ${labels[hero.type]}`;tab.setAttribute('aria-pressed',String(hero.id===e.id));tab.onclick=()=>activateHero(hero.id);tabs.append(tab);}
    actions.append(tabs);
   }
@@ -538,17 +569,19 @@ function refreshActions() {
   for (const id of HERO_ABILITIES[e.type] || []) {
    const skill = ABILITIES[id], cooldown = e.cooldowns?.[id] || 0;
    const reason = abilityError(e,id);
-   const action = button(`${skill.key} · ${skill.name}`, `${skill.mana} mana · ${cooldown > .01 ? Math.ceil(cooldown) + ' s para usar' : skill.cooldown + ' s de recarga'}`,
+   const action = button(`${skill.key} · ${skill.name}`, (e.heroLevel || 1)<skill.requiredLevel?`Requer nível ${skill.requiredLevel}`:`${skill.mana} mana · ${cooldown > .01 ? Math.ceil(cooldown) + ' s para usar' : skill.cooldown + ' s de recarga'}`,
     ()=>armSkill(e,id), reason, skill.description);
    action.classList.add('skill-action'); action.style.setProperty('--skill',skill.color);
    if (skill.requiredLevel > 1) action.classList.add('ultimate-action');
   }
+  category='items';
   note('Inventário · 3 espaços · Alt + 1 / 2 / 3 para consumir');
   for (let slot = 0; slot < 3; slot++) {
    const id = e.inventory?.[slot], item = ITEMS[id];
    button(item ? `Alt + ${slot + 1} · ${item.icon} ${item.name}` : `Alt + ${slot + 1} · Espaço livre`, item?.kind === 'passive' ? 'Equipado' : item ? 'Consumir' : 'Compre perto do Salão',
     ()=>send({type:'useItem',ids:[e.id],slot}), !item ? 'Espaço vazio.' : item.kind === 'passive' ? 'Este item age enquanto estiver equipado.' : item.kind === 'heal' && e.hp >= e.maxHp ? 'Sua vida já está completa.' : item.kind === 'mana' && e.mana >= e.maxMana ? 'Sua mana já está completa.' : '', item?.description || '').classList.add('inventory-action');
   }
+  category='shop';
   note(nearShop(e) ? 'Mercado do Salão · itens para seu herói' : 'Aproxime o herói de um Salão próprio pronto para comprar itens.');
   for (const [id,item] of Object.entries(ITEMS)) {
    const reason = !nearShop(e) ? 'Aproxime-se de um Salão próprio.' : (e.inventory?.length || 0) >= 3 ? 'Inventário cheio.' :
@@ -557,6 +590,7 @@ function refreshActions() {
   }
  }
  if (e.type === 'workshop'&&units.length===1) {
+  category='upgrades';
   note(e.researchJob ? `Pesquisando ${RESEARCH[e.researchJob.id]?.name}: ${Math.ceil(e.researchJob.remaining)} s` : 'Pesquisas beneficiam todas as unidades do seu exército, inclusive as futuras.');
   for (const [id,research] of Object.entries(RESEARCH)) {
    const level = p.research?.[id] || 0, cost = researchCost(p,id);
@@ -566,6 +600,7 @@ function refreshActions() {
     ()=>send({type:'research',ids:[e.id],research:id}),reason,gate || research.description).classList.add('research-action');
   }
  }
+ category='upgrades';
  if (units.length === 1 && BUILDING_TYPES.includes(e.type)) {
   if ((e.level || 1) < MAX_LEVEL) {
    const cost = upgradeCost(e);
@@ -575,11 +610,13 @@ function refreshActions() {
     () => send({type: 'upgrade', ids: [e.id]}), reason, upgradeDescription(e));
    b.classList.add('upgrade-action');
   } else note('Nível máximo alcançado.');
- } else if(!BUILDING_TYPES.includes(e.type)) note(`Treinamento coletivo ${p.troopLevel || 1}/3 · Melhore toda a companhia em um Quartel de nível III.`);
+ } else if(!BUILDING_TYPES.includes(e.type)&&!HEROES[e.type]&&e.type!=='worker') note(`Treinamento coletivo ${p.troopLevel || 1}/3 · Melhore toda a companhia em um Quartel de nível III.`);
  if(producers.length&&units.length>1)note('Selecione uma construção para evoluir, pesquisar, treinar melhorias coletivas ou definir sua bandeira. Heróis são recrutados em um Salão por vez.');
+ category='orders';
  if (units.length===1&&['base','barracks','hall','workshop'].includes(e.type)) button('⚑ Ponto de encontro','Clique direito no terreno ou recurso',()=>armRally(e),'',e.type==='base'?'Marque ouro ou madeira para os novos trabalhadores já saírem coletando.':'Os novos recrutas seguem para a bandeira e aguardam novas ordens.');
  if (units.some(unit => unit.owner === p.id && !BUILDING_TYPES.includes(unit.type)))
   {button('■ Parar', 'Atalho X', () => send({type: 'stop'})); button('⚔ Avançar atacando','Atalho A',()=>armAttackMove());}
+ layoutActions(heroic?'skills':producers.length?'recruit':selectedWorkers().length?'work':'orders');
 }
 function setBuild(type) {
  if (type) cancelTargeting();
@@ -656,7 +693,14 @@ function targetError(point) {
  if(!pointVisible(point))return 'Escolha um ponto visível para sua equipe.';
  return null;
 }
-function resize(){const rect=canvas.getBoundingClientRect();cw=rect.width;ch=rect.height;const d=Math.min(devicePixelRatio||1,2);canvas.width=cw*d;canvas.height=ch*d;ctx.setTransform(d,0,0,d,0,0);}
+function clampCamera() {
+ const scale=Math.max(.01,zoom);
+ for(const [axis,pixels] of [['x',cw],['y',ch]]){
+  const half=Math.max(0,pixels)/scale/2;
+  camera[axis]=half>=WORLD/2?WORLD/2:Math.max(half,Math.min(WORLD-half,camera[axis]));
+ }
+}
+function resize(){const rect=canvas.getBoundingClientRect();cw=rect.width;ch=rect.height;const d=Math.min(devicePixelRatio||1,2);canvas.width=cw*d;canvas.height=ch*d;ctx.setTransform(d,0,0,d,0,0);clampCamera();}
 new ResizeObserver(resize).observe(canvas);
 const world=p=>({x:camera.x+(p.x-cw/2)/zoom,y:camera.y+(p.y-ch/2)/zoom});
 const local=e=>{const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
@@ -672,6 +716,12 @@ function entityContains(e,p){
 function entityAt(p){return state?.entities.filter(e=>entityContains(e,p)).sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];}
 function resourceAt(point,type=null){return state?.resources.filter(resource=>resource.amount>0&&(!type||resource.type===type)&&Math.hypot(resource.x-point.x,resource.y-point.y)<35).sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y))[0];}
 function rallyOrder(id,point){const resource=resourceAt(point);return {type:'rally',ids:[id],...(resource?{x:resource.x,y:resource.y,target:resource.id}:point)};}
+$('#hud-minimap').oncontextmenu=e=>e.preventDefault();
+$('#hud-minimap').onpointerdown=event=>{
+ if(!state||!hudMinimap)return;event.preventDefault();pointer=null;canvas.focus();
+ const rect=$('#hud-minimap').getBoundingClientRect(),m=hudMinimap,point={x:Math.max(20,Math.min(WORLD-20,(event.clientX-rect.left-m.x)/m.s*WORLD)),y:Math.max(20,Math.min(WORLD-20,(event.clientY-rect.top-m.y)/m.s*WORLD))};
+ if(event.button===2){const trainers=state.entities.filter(e=>selected.has(e.id)&&e.owner===session?.id&&['base','barracks','hall','workshop'].includes(e.type));if(trainers.length===selected.size&&trainers.length){for(const trainer of trainers)send(rallyOrder(trainer.id,point));}else send({type:'move',...point});}else if(event.button===0)camera=point;
+};
 canvas.oncontextmenu=e=>e.preventDefault();
 canvas.onpointerdown = async event => {
  canvas.focus(); audio.unlock();
@@ -722,7 +772,7 @@ canvas.onpointerup=e=>{if(!drag)return;if(drag.pan){drag=null;return;}const {fro
 canvas.ondblclick=e=>{const unit=entityAt(world(local(e)));if(unit?.owner!==session?.id)return;selected=new Set(state.entities.filter(t=>t.type===unit.type&&t.owner===unit.owner&&Math.abs(t.x-camera.x)<cw/2/zoom&&Math.abs(t.y-camera.y)<ch/2/zoom).map(t=>t.id));refreshActions();};
 canvas.onwheel=e=>{e.preventDefault();zoom=Math.max(.35,Math.min(1.25,zoom*(e.deltaY>0?.9:1.1)));};
 window.onkeydown = event => {
- if (['INPUT','TEXTAREA','SELECT'].includes(event.target?.tagName) || event.target?.isContentEditable || $('#instructions').open || $('#hero-guide').open) {keys.clear();return;}
+ if (['INPUT','TEXTAREA','SELECT'].includes(event.target?.tagName) || event.target?.isContentEditable || $('#instructions').open || $('#hero-guide').open || $('#selection-info').open) {keys.clear();return;}
  const key = event.key.toLowerCase();
  if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','F1'].includes(event.key)) event.preventDefault();
  if (event.key === 'Escape') {setBuild(null);cancelTargeting();return;}
@@ -778,7 +828,7 @@ function buildingArt(e,col){if(sceneArt.drawBuilding(ctx,e,col,performance.now()
  }
  else {polygon([[x-20,y-37],[x+20,y-37],[x+25,y+25],[x,y+38],[x-25,y+25]],'#8a977c');polygon([[x,y-30],[x+20,y-37],[x+25,y+25],[x,y+38]],'#586e5a');polygon([[x-31,y-39],[x,y-62],[x+31,y-39],[x,y-24]],col);ctx.fillStyle='#263e2b';ctx.fillRect(x-5,y-16,10,17);}
  ctx.restore();}
-function unitArt(e,col,now){if(sceneArt.drawUnit(ctx,e,col,now))return;if(HEROES[e.type]){heroArt(e,col,now);return;}const{x,y,type}=e, moving=e.order&&e.order.type!=='gather',bob=moving?Math.sin(now/90+e.id)*2:0;ellipse(x,y+9,12,6,'#0a17167a');ctx.strokeStyle='#283126';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x-4,y+3);ctx.lineTo(x-6,y+12+bob);ctx.moveTo(x+4,y+3);ctx.lineTo(x+6,y+12-bob);ctx.stroke();polygon([[x-8,y-12],[x+8,y-12],[x+10,y+6],[x-10,y+6]],col,'#c9d3a373');ellipse(x,y-17+bob,6,7,type==='soldier'?'#c0c8b2':'#d2b28a');if(type==='worker'){ctx.strokeStyle='#b0ad87';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x+10,y+5);ctx.lineTo(x+17,y-21);ctx.moveTo(x+11,y-21);ctx.lineTo(x+23,y-16);ctx.stroke();}else if(type==='soldier'){polygon([[x-17,y-7],[x-7,y-6],[x-8,y+6],[x-12,y+11],[x-17,y+4]],'#9ca98b',col);ctx.strokeStyle='#d5ddca';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x+11,y+2);ctx.lineTo(x+18,y-22);ctx.stroke();}else{ctx.strokeStyle='#dab26f';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x+12,y-3,6,14,0,-Math.PI/2,Math.PI/2);ctx.stroke();ctx.beginPath();ctx.moveTo(x+12,y-17);ctx.lineTo(x+12,y+11);ctx.stroke();}}
+function unitArt(e,col,now){if(sceneArt.drawUnit(ctx,e,col,now,{reducedMotion}))return;if(HEROES[e.type]){heroArt(e,col,now);return;}const{x,y,type}=e, moving=e.order&&e.order.type!=='gather',bob=moving?Math.sin(now/90+e.id)*2:0;ellipse(x,y+9,12,6,'#0a17167a');ctx.strokeStyle='#283126';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x-4,y+3);ctx.lineTo(x-6,y+12+bob);ctx.moveTo(x+4,y+3);ctx.lineTo(x+6,y+12-bob);ctx.stroke();polygon([[x-8,y-12],[x+8,y-12],[x+10,y+6],[x-10,y+6]],col,'#c9d3a373');ellipse(x,y-17+bob,6,7,type==='soldier'?'#c0c8b2':'#d2b28a');if(type==='worker'){ctx.strokeStyle='#b0ad87';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x+10,y+5);ctx.lineTo(x+17,y-21);ctx.moveTo(x+11,y-21);ctx.lineTo(x+23,y-16);ctx.stroke();}else if(type==='soldier'){polygon([[x-17,y-7],[x-7,y-6],[x-8,y+6],[x-12,y+11],[x-17,y+4]],'#9ca98b',col);ctx.strokeStyle='#d5ddca';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x+11,y+2);ctx.lineTo(x+18,y-22);ctx.stroke();}else{ctx.strokeStyle='#dab26f';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x+12,y-3,6,14,0,-Math.PI/2,Math.PI/2);ctx.stroke();ctx.beginPath();ctx.moveTo(x+12,y-17);ctx.lineTo(x+12,y+11);ctx.stroke();}}
 function heroArt(e, ownerColor, now) {
  if(sceneArt.drawHero(ctx,e,ownerColor,now))return;
  const {x, y, type} = e, hero = HEROES[type];
@@ -825,8 +875,8 @@ function heroArt(e, ownerColor, now) {
 }
 function drawEntityProgress(e, isBuilding, color, now) {
  const tier = e.level || 1;
- if (tier > 1 || selected.has(e.id)) {
-  const x = e.x + (isBuilding ? 36 : 17), y = e.y + (isBuilding ? 34 : 15);
+ if (!HEROES[e.type]&&e.type!=='worker'&&(tier > 1 || selected.has(e.id))) {
+  const x = e.x + (isBuilding ? 36 : e.type==='siege'?39:17), y = e.y + (isBuilding ? 34 : e.type==='siege'?24:15);
   ctx.fillStyle = '#17251f';ctx.fillRect(x - 10,y - 9,20,16);
   ctx.font = 'bold 11px Segoe UI';ctx.textAlign = 'center';ctx.fillStyle = tier === MAX_LEVEL ? '#ffe09c' : color;
   ctx.fillText(['','I','II','III'][tier],x,y + 3);
@@ -860,7 +910,7 @@ function drawBuildZones() {
   ctx.beginPath();ctx.arc(e.x,e.y,BUILD_RULES.enemyBaseRadius,0,Math.PI*2);ctx.fill();ctx.stroke();
  }
  const worker = state.entities.find(e => e.id === builderId);
- if (worker) {ctx.strokeStyle='#f4d279b0';ctx.beginPath();ctx.arc(worker.x,worker.y,BUILD_RULES.workerRange,0,Math.PI*2);ctx.stroke();}
+ if (worker&&pointer) {const destination=world(pointer);ctx.strokeStyle='#f4d279b0';ctx.beginPath();ctx.moveTo(worker.x,worker.y);ctx.lineTo(destination.x,destination.y);ctx.stroke();}
  ctx.restore();
 }
 function drawBuildGhost() {
@@ -869,7 +919,7 @@ function drawBuildGhost() {
  ctx.strokeStyle = color;ctx.lineWidth = 2/zoom;
  ctx.beginPath();ctx.ellipse(point.x,point.y + 10,51,27,0,0,Math.PI*2);ctx.stroke();
  $('#buildhint').classList.toggle('invalid', !!reason);
- $('#buildhint').textContent = reason ? `${reason} · Esc cancela` : `${labels[building]} · Local válido · Clique para construir · Esc cancela`;
+ $('#buildhint').textContent = reason ? `${reason} · Esc cancela` : `${labels[building]} · Local válido · Caminhar e construir · Esc cancela`;
 }
 function drawFog(mini = null) {
  if(!state?.fog)return;
@@ -985,6 +1035,7 @@ function drawTerrain(map) {
  ctx.restore();
 }
 function campStatus(camp) {
+ if(camp.boss&&camp.awakensAt>(state?.time || 0)){const left=Math.ceil(camp.awakensAt-state.time);return `Adormecido · desperta em ${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`;}
  if(camp.visible===false || (state?.fog && camp.visible!==true))return camp.known?'Última observação · explore para atualizar':'Explore para conhecer o acampamento';
  const timers=(camp.guards||[]).filter(guard=>guard.respawnAt!=null).map(guard=>{
   const left=Math.max(0,Math.ceil(guard.respawnAt-(state?.time||0)));
@@ -1051,7 +1102,11 @@ function drawBossWarnings() {
  }
 }
 function drawMinimap() {
- const s=Math.min(150,cw*.2),x=cw-s-18,y=ch-s-18,map=getMap(state.mapId||DEFAULT_MAP);minimap={s,x,y};
+ const previousContext=ctx,surface=$('#hud-minimap'),hudContext=surface.getContext?.('2d'),rect=surface.getBoundingClientRect();
+ let s=Math.min(150,cw*.2),x=cw-s-18,y=ch-s-18;
+ if(hudContext&&rect.width>0&&rect.height>0){const d=Math.min(devicePixelRatio||1,2);if(surface.width!==Math.round(rect.width*d)||surface.height!==Math.round(rect.height*d)){surface.width=Math.round(rect.width*d);surface.height=Math.round(rect.height*d);}ctx=hudContext;ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,rect.width,rect.height);s=Math.min(rect.width,rect.height)-12;x=(rect.width-s)/2;y=(rect.height-s)/2;hudMinimap={x,y,s};minimap=null;}else minimap={s,x,y};
+ const map=getMap(state.mapId||DEFAULT_MAP);
+ try {
  ctx.fillStyle='#101e18ee';ctx.fillRect(x-5,y-5,s+10,s+10);ctx.strokeStyle='#798660';ctx.strokeRect(x-5,y-5,s+10,s+10);
  ctx.fillStyle=map.theme.ground;ctx.fillRect(x,y,s,s);
  if(state.mapId){ctx.save();ctx.translate(x,y);ctx.scale(s/WORLD,s/WORLD);drawMapWater(map,true);ctx.restore();}
@@ -1061,8 +1116,9 @@ function drawMinimap() {
  if(state.mapId)for(const camp of map.camps){if(camp.tier!=='boss')continue;ctx.font='bold 13px Segoe UI';ctx.textAlign='center';ctx.fillStyle=CAMP_TYPES.boss.color;ctx.fillText('✦',x+camp.x/WORLD*s,y+camp.y/WORLD*s+4);}
  for(const e of state.entities){ctx.fillStyle=colors[state.players.find(p=>p.id===e.owner)?.slot]||CAMP_TYPES[e.neutralTier]?.color||'#d4a478';const sz=e.type==='base'?6:e.boss?5:3;ctx.fillRect(x+e.x/WORLD*s-sz/2,y+e.y/WORLD*s-sz/2,sz,sz);}
  ctx.strokeStyle='#e8e6b8';ctx.lineWidth=1;ctx.strokeRect(x+(camera.x-cw/2/zoom)/WORLD*s,y+(camera.y-ch/2/zoom)/WORLD*s,cw/zoom/WORLD*s,ch/zoom/WORLD*s);
+ }finally{ctx=previousContext;}
 }
-function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;const speed=480*dt/zoom,modalOpen=$('#instructions').open||$('#hero-guide').open;if(modalOpen){keys.clear();pointer=null;drag=null;}if(!drag&&!modalOpen){if(keys.has('arrowleft')||pointer?.x<12)camera.x-=speed;if(keys.has('arrowright')||pointer?.x>cw-12)camera.x+=speed;if(keys.has('arrowup')||pointer?.y<12)camera.y-=speed;if(keys.has('arrowdown')||pointer?.y>ch-12)camera.y+=speed;}camera.x=Math.max(0,Math.min(1800,camera.x));camera.y=Math.max(0,Math.min(1800,camera.y));
+function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;const speed=480*dt/zoom,modalOpen=$('#instructions').open||$('#hero-guide').open||$('#selection-info').open;if(modalOpen){keys.clear();pointer=null;drag=null;}if(!drag&&!modalOpen){if(keys.has('arrowleft')||pointer?.x<12)camera.x-=speed;if(keys.has('arrowright')||pointer?.x>cw-12)camera.x+=speed;if(keys.has('arrowup')||pointer?.y<12)camera.y-=speed;if(keys.has('arrowdown')||pointer?.y>ch-12)camera.y+=speed;}clampCamera();
  ctx.clearRect(0,0,cw,ch);ctx.fillStyle='#12291f';ctx.fillRect(0,0,cw,ch);ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(zoom,zoom);ctx.translate(-camera.x,-camera.y);ctx.fillStyle=getMap(state?.mapId||DEFAULT_MAP).theme.ground;ctx.fillRect(0,0,1800,1800);
  // A deterministic, original landscape: meadow patches, trails, stream and ruins.
  for(let i=0;i<550;i++){const x=hash(i)*1800,y=hash(i+700)*1800;ellipse(x,y,hash(i+1)*65+8,hash(i+2)*30+5,i%3?'#45634340':'#203f3135');}
@@ -1076,8 +1132,8 @@ function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;c
  if(building && state) drawBuildZones();
  drawBossWarnings();
  const entities=(state?.entities||[]).slice().sort((a,b)=>a.y-b.y);
- for(const e of entities){const p=state.players.find(p=>p.id===e.owner)||{slot:-1,name:'Mercenário neutro'},col=colors[p.slot]||CAMP_TYPES[e.neutralTier]?.color||'#d4a478';const isBuilding=BUILDING_TYPES.includes(e.type);if(selected.has(e.id)){ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(e.x,e.y+7,isBuilding?53:e.boss?44:18,isBuilding?26:e.boss?22:10,0,0,Math.PI*2);ctx.stroke();}if(isBuilding)buildingArt(e,col);else if(NEUTRAL_TYPES.includes(e.type))drawNeutral(e,now);else unitArt(e,col,now);drawEntityProgress(e,isBuilding,col,now);
- if(e.hp<e.maxHp||selected.has(e.id)||HEROES[e.type]||e.boss){const art=NEUTRAL_ART[e.type],width=isBuilding?65:e.boss?80:HEROES[e.type]?42:29,top=art?e.y+12-art.size*art.foot-6:e.y-(isBuilding?85:HEROES[e.type]?71:31);ctx.fillStyle='#0e2019';ctx.fillRect(e.x-width/2-1,top-1,width+2,6);ctx.fillStyle=e.hp/e.maxHp>.35?col:'#e48a69';ctx.fillRect(e.x-width/2,top,width*Math.max(0,e.hp/e.maxHp),4);}
+ for(const e of entities){const p=state.players.find(p=>p.id===e.owner)||{slot:-1,name:'Mercenário neutro'},col=colors[p.slot]||CAMP_TYPES[e.neutralTier]?.color||'#d4a478';const isBuilding=BUILDING_TYPES.includes(e.type);if(selected.has(e.id)){ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(e.x,e.y+7,isBuilding?53:e.boss?44:e.type==='siege'?34:18,isBuilding?26:e.boss?22:e.type==='siege'?17:10,0,0,Math.PI*2);ctx.stroke();}if(isBuilding)buildingArt(e,col);else if(NEUTRAL_TYPES.includes(e.type))drawNeutral(e,now);else unitArt(e,col,now);drawEntityProgress(e,isBuilding,col,now);
+ if(e.hp<e.maxHp||selected.has(e.id)||HEROES[e.type]||e.boss){const art=NEUTRAL_ART[e.type],width=isBuilding?65:e.boss?80:HEROES[e.type]?42:29,top=art?e.y+12-art.size*art.foot-6:e.y-(isBuilding?85:HEROES[e.type]?71:e.type==='siege'?62:31);ctx.fillStyle='#0e2019';ctx.fillRect(e.x-width/2-1,top-1,width+2,6);ctx.fillStyle=e.hp/e.maxHp>.35?col:'#e48a69';ctx.fillRect(e.x-width/2,top,width*Math.max(0,e.hp/e.maxHp),4);}
  if(e.type==='base'){ctx.font='12px Segoe UI';ctx.textAlign='center';ctx.fillStyle=col;ctx.fillText(p.name,e.x,e.y+65);}
  drawWorkActivity(e,now);drawRallyFlag(e,col,now);
  if(e.queue.length){ctx.fillStyle='#d5bd73';ctx.fillRect(e.x-25,e.y+49,50*Math.min(1,e.progress/trainDuration(e.queue[0],e)),3);

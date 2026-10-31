@@ -70,9 +70,9 @@ test('treino solo gera exatamente um oponente, e duplas completa apenas quatro v
 test('modo cooperativo também inicia com um, dois ou três amigos sem preencher vagas humanas', () => {
   for (const humans of [1, 2, 3]) {
     const {r, p} = lobby('coop', humans); beginMatch(r, p, false, spawn);
-    assert.equal(r.players.length, humans + 4);
+    assert.equal(r.players.length, humans * 2);
     assert.equal(r.players.filter(p => !p.bot).length, humans);
-    assert.equal(r.players.filter(p => p.bot).length, 4);
+    assert.equal(r.players.filter(p => p.bot).length, humans);
     assert.equal(r.players.filter(p => p.team === 0).length, humans);
   }
 });

@@ -16,6 +16,9 @@ function match(mapId = 'three-bridges', withAlly = false) {
     configureLobby(r, a, {action:'team', slot:ally.slot, team:a.team});
   }
   start(r, a);
+  // These lifecycle/combat fixtures exercise an already-awakened encounter.
+  // Initial sleep/invulnerability is covered independently in balance-v081.
+  for(const boss of r.entities.filter(e=>e.boss)){boss.dormantUntil=0;boss.nextQuakeAt=BOSS_SLAM.cooldown;}
   return {r, a, b, ally};
 }
 const entityFor = (r, guard) => r.entities.find(entity => entity.id === guard.entityId);
@@ -136,7 +139,7 @@ test('magia fatal libera só ao autor a segunda vaga paga e preserva a hora real
 test('dano periódico identifica o autor mesmo depois que o herói morre', () => {
   const {r, a, b} = match(), camp = bossCamp(r), guard = camp.guards[0], boss = entityFor(r, guard);
   const hero = spawn(r, a, 'ember', boss.x - 100, boss.y);
-  hero.heroLevel = 3; hero.mana = 200; boss.hp = 10;
+  hero.heroLevel = 5; hero.mana = 230; boss.hp = 10;
   command(r, a, {type:'cast', ids:[hero.id], ability:'suncoil', x:boss.x, y:boss.y});
   hero.hp = 0;
   r.time = .1; tickPowers(r, .1); updateCamps(r, spawn);
@@ -150,7 +153,7 @@ test('dano periódico identifica o autor mesmo depois que o herói morre', () =>
 test('novas vidas do chefe permitem outros vencedores, mas ninguém supera duas vagas', () => {
   const {r, a, b} = match(), camp = bossCamp(r), guard = camp.guards[0];
   const initialA = a.gold, initialB = b.gold;
-  r.time = 2; kill(r, a, entityFor(r, guard)); removeDead(r);
+  r.time = 452; kill(r, a, entityFor(r, guard)); removeDead(r);
   const firstRespawn = guard.respawnAt;
   r.time = firstRespawn; updateCamps(r, spawn);
   const secondId = guard.entityId;
@@ -192,38 +195,38 @@ test('impacto do chefe avisa, permite esquiva e respeita armadura, escudo e reca
   protectedUnit.research.armor = 2; protectedUnit.shield = 20; protectedUnit.shieldUntil = 100;
   const before = new Map([protectedUnit, dodger, exposed, building, neutral].map(entity => [entity.id, entity.hp]));
   r.time = 8; updateCamps(r, spawn);
-  assert.equal(boss.quakeAt, 9.2);
+  assert.equal(boss.quakeAt, 9.6);
   assert.ok(r.spellEvents.some(event => event.ability === 'colossusWarning'));
   assert.equal(exposed.hp, before.get(exposed.id));
-  assert.equal(boss.rootUntil, 9.2);
-  r.time = 9.199; updateCamps(r, spawn);
+  assert.equal(boss.rootUntil, 9.6);
+  r.time = 9.599; updateCamps(r, spawn);
   assert.equal(exposed.hp, before.get(exposed.id));
   dodger.x = boss.quakeX + BOSS_SLAM.radius + 1; dodger.y = boss.quakeY;
-  r.time = 9.2; updateCamps(r, spawn);
-  assert.ok(Math.abs(protectedUnit.hp - (before.get(protectedUnit.id) - (70 * .84 - 20))) < 1e-8);
+  r.time = 9.6; updateCamps(r, spawn);
+  assert.ok(Math.abs(protectedUnit.hp - (before.get(protectedUnit.id) - (BOSS_SLAM.damage * .9 - 20))) < 1e-8);
   assert.equal(protectedUnit.shield, 0);
   assert.equal(dodger.hp, before.get(dodger.id));
   assert.equal(exposed.hp, before.get(exposed.id) - BOSS_SLAM.damage);
   assert.equal(building.hp, before.get(building.id));
   assert.equal(neutral.hp, before.get(neutral.id));
   assert.equal(boss.quakeAt, null);
-  assert.equal(boss.nextQuakeAt, 17.2);
+  assert.equal(boss.nextQuakeAt, 17.6);
   updateCamps(r, spawn);
   assert.equal(exposed.hp, before.get(exposed.id) - BOSS_SLAM.damage);
   assert.equal(r.spellEvents.filter(event => event.ability === 'colossusSlam').length, 1);
-  r.time = 17.199; updateCamps(r, spawn);
+  r.time = 17.599; updateCamps(r, spawn);
   assert.equal(boss.quakeAt, null);
-  r.time = 17.2; updateCamps(r, spawn);
-  assert.equal(boss.quakeAt, 18.4);
+  r.time = 17.6; updateCamps(r, spawn);
+  assert.ok(Math.abs(boss.quakeAt-19.2)<1e-8);
 });
 
 test('matar o chefe durante o aviso cancela o impacto e programa seu retorno', () => {
   const {r, a} = match(), guard = bossCamp(r).guards[0], boss = entityFor(r, guard);
   const target = spawn(r, a, 'soldier', boss.x + 50, boss.y), hp = target.hp;
   r.time = 8; updateCamps(r, spawn);
-  assert.equal(boss.quakeAt, 9.2);
+  assert.equal(boss.quakeAt, 9.6);
   r.time = 8.5; kill(r, a, boss); removeDead(r);
-  r.time = 9.2; updateCamps(r, spawn);
+  r.time = 9.6; updateCamps(r, spawn);
   assert.equal(target.hp, hp);
   assert.equal(r.spellEvents.filter(event => event.ability === 'colossusSlam').length, 0);
   assert.equal(guard.respawnAt, 128.5);

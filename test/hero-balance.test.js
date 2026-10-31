@@ -7,7 +7,7 @@ import {HERO_TYPES, HEROES, entityStats} from '../public/rules.js';
 // Positioning, manual kiting, army composition and unequal levels remain strategic.
 test('heróis: 108 duelos confirmam os confrontos favoráveis em três níveis e distâncias', () => {
   let duels = 0;
-  for (const level of [1, 2, 3]) {
+  for (const level of [1, 3, 5]) {
     for (const gap of [30, 100, 220]) {
       for (const reverseSpawnOrder of [false, true]) {
         for (const heroType of HERO_TYPES) {
@@ -27,7 +27,7 @@ test('heróis: 108 duelos confirmam os confrontos favoráveis em três níveis e
             opponent = spawn(r, secondPlayer, opponentType, 800 + gap, 900);
           }
           for (const entity of [hero, opponent]) {
-            entity.level = level;
+            entity.heroLevel = level;
             entity.hp = entity.maxHp = entityStats(entity).hp;
           }
           command(r, firstPlayer, {type: 'attack', ids: [hero.id], target: opponent.id});

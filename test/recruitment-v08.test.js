@@ -31,7 +31,7 @@ test('recrutamento coletivo: três quartéis recebem uma unidade cada, cobrada u
   assert.deepEqual(balances(p),[funds[0]-210,funds[1]-75]);
   assert.deepEqual(buildings.map(e=>e.queue),[['soldier','soldier'],['soldier'],['soldier']]);
   assert.equal(buildings[0].progress,2,'o pedido atual mantém seu progresso');
-  for(let i=0;i<80;i++)step(r,.1);
+  for(let i=0;i<120;i++)step(r,.1);
   assert.equal(r.entities.filter(e=>e.owner===p.id&&e.type==='soldier').length,3,'os quartéis produzem em paralelo');
   assert.deepEqual(buildings.map(e=>e.queue),[['soldier'],[],[]]);
   assert.deepEqual(balances(p),[funds[0]-210,funds[1]-75],'concluir não cobra novamente');
