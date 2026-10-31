@@ -86,6 +86,43 @@ export function trainDuration(unit, building) {
   const seconds = unit === 'worker' ? 5 : STATS[unit]?.hero ? 14 : unit==='siege'?13:unit==='healer'?10:8;
   return seconds * (1 - .15 * ((building.level || 1) - 1));
 }
+
+// These checks are shared by the command server and the recruitment panel.
+// Purchased mobile-unit levels are collective; heroic experience stays separate.
+export function trainingError(state, ownerId, building, unit) {
+  const trainer = HERO_TYPES.includes(unit) ? 'hall' : unit === 'worker' ? 'base' :
+    ['soldier', 'archer', 'healer'].includes(unit) ? 'barracks' : unit === 'siege' ? 'workshop' : null;
+  if (!trainer || !building || building.owner !== ownerId || building.hp <= 0 || building.type !== trainer) return 'Selecione uma construção sua capaz de recrutar esta unidade.';
+  if (building.construct || building.upgrade || building.researchJob || building.troopUpgrade) return 'Aguarde a construção, a evolução ou o treinamento coletivo terminar.';
+  const required = unit === 'archer' ? 2 : unit === 'healer' ? 3 : 1;
+  if ((building.level || 1) < required) return `Evolua o Quartel ao nível ${required} para recrutar ${unit === 'archer' ? 'arqueiros' : 'cuidadores'}.`;
+  return null;
+}
+
+export function collectiveUpgradeCost(player) {
+  return (player?.troopLevel || 1) >= 2 ? [750, 500] : [450, 300];
+}
+export function collectiveUpgradeDuration(player) {
+  return (player?.troopLevel || 1) >= 2 ? 35 : 25;
+}
+export function collectiveUpgradeError(state, ownerId, building) {
+  const player = state.players?.find(p => p.id === ownerId);
+  if (!player || !building || building.owner !== ownerId || building.hp <= 0 || building.type !== 'barracks') return 'Selecione um Quartel seu.';
+  if (building.construct || building.upgrade || (building.level || 1) < 3) return 'Evolua o Quartel ao nível 3 para liberar o treinamento coletivo.';
+  if ((player.troopLevel || 1) >= MAX_LEVEL) return 'O treinamento coletivo já está no nível máximo.';
+  if (state.entities.some(e => e.owner === ownerId && e.hp > 0 && e.troopUpgrade)) return 'Já existe um treinamento coletivo em andamento.';
+  if (building.queue?.length || building.researchJob) return 'Aguarde a fila de recrutamento ou a pesquisa terminar.';
+  const cost = collectiveUpgradeCost(player);
+  if (player.gold < cost[0] || player.wood < cost[1]) return 'Recursos insuficientes para o treinamento coletivo.';
+  return null;
+}
+
+export function combatResearchError(state, ownerId, researchId) {
+  if (!['weapons', 'armor'].includes(researchId)) return null;
+  if (!state.entities.some(e => e.owner === ownerId && e.type === 'barracks' && e.hp > 0 && !e.construct && !e.upgrade && (e.level || 1) >= 3)) return 'Armas e proteção exigem um Quartel pronto de nível 3.';
+  return null;
+}
+
 export function heroMultiplier(attackerType, targetType) {
   const hero = HEROES[attackerType];
   if (!hero || !HERO_TYPES.includes(targetType)) return 1;

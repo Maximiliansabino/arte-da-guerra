@@ -3,6 +3,7 @@ import {MAP, terrainBlocked} from './public/terrain.js';
 import {STATS, entityStats} from './public/rules.js';
 import {FACTIONS} from './public/legends.js';
 import {DEFAULT_MODE, MODES, FOG_CELL, FOG_COLS, FOG_ROWS} from './public/match-config.js';
+import {DEFAULT_DIFFICULTY, DIFFICULTIES} from './public/ai-config.js';
 
 const LEGACY_SPAWNS = [[220, 220], [1580, 1580], [1580, 220], [220, 1580]];
 const DUO_SPAWNS = [[220, 220], [220, 1580], [1580, 220], [1580, 1580]];
@@ -13,6 +14,11 @@ const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const validPoint = p => p && Number.isFinite(p.x) && Number.isFinite(p.y);
 const modeFor = r => MODES[r.mode] || MODES[DEFAULT_MODE];
 const spawnsFor = r => r.mode === 'coop' ? COOP_SPAWNS : r.mode === 'duos' ? DUO_SPAWNS : LEGACY_SPAWNS;
+// Spawn locations are map knowledge, not hidden entity intelligence.
+export function startingPoint(r, slot) {
+  const [x, y] = spawnsFor(r)[slot] || LEGACY_SPAWNS[0];
+  return {x, y};
+}
 
 function resourcesFor(r) {
   const resources = [];
@@ -32,7 +38,7 @@ function resourcesFor(r) {
 
 export function createRoom(code = randomBytes(8).toString('hex'), terrain = false) {
   const r = {
-    code, mode: DEFAULT_MODE, fogEnabled: true, mapId: terrain ? 'three-bridges' : null,
+    code, mode: DEFAULT_MODE, difficulty: DEFAULT_DIFFICULTY, fogEnabled: true, mapId: terrain ? 'three-bridges' : null,
     players: [], entities: [], resources: [], camps: [], phase: 'lobby', tick: 0, time: 0,
     nextId: 1, nextCombatId: 1, nextSpellId: 1, combatEvents: [], spellEvents: [], zones: [],
     winner: null, winningTeam: null, winners: [], created: Date.now(), touched: Date.now()
@@ -61,7 +67,7 @@ export function addCommander(r, name, bot = false) {
     id: randomUUID(), token: randomBytes(32).toString('hex'),
     name: String(name || 'Comandante').trim().slice(0, 24) || 'Comandante',
     slot, team: prescribedTeam(r, slot), faction: bot ? Object.keys(FACTIONS)[slot % 4] : 'mata',
-    gold: 300, wood: 200, bot: !!bot, defeated: false, heroType: null, research: {}
+    gold: 300, wood: 200, bot: !!bot, defeated: false, heroType: null, research: {}, troopLevel: 1
   };
   r.players.push(p);
   r.touched = Date.now();
@@ -79,7 +85,10 @@ export function configureMatch(r, p, a) {
     target.faction = a.faction;
   } else {
     if (!host) throw Error('Só o anfitrião configura os times e o modo da sala.');
-    if (a.action === 'mode') {
+    if (a.action === 'difficulty') {
+      if (!Object.hasOwn(DIFFICULTIES, a.difficulty)) throw Error('Escolha uma dificuldade válida: fácil, normal ou difícil.');
+      r.difficulty = a.difficulty;
+    } else if (a.action === 'mode') {
       if (!Object.hasOwn(MODES, a.mode)) throw Error('Modo de partida inválido.');
       const humans = r.players.filter(member => !member.bot);
       if (humans.length > MODES[a.mode].maxHumans || humans.some(member => member.slot >= MODES[a.mode].maxHumans)) throw Error('Este modo não comporta os jogadores presentes.');
@@ -245,7 +254,7 @@ export function snapshotFor(r, viewer) {
   const visibleIds = new Set(entities.map(e => e.id));
   const players = r.players.map(({token, ...member}) => {
     if (full || alliedMatch(r, p.id, member.id)) return member;
-    return {...member, gold: null, wood: null, heroType: entities.some(e => e.owner === member.id && STATS[e.type]?.hero) ? member.heroType : null, research: {}, researchQueue: null};
+    return {...member, gold: null, wood: null, heroType: entities.some(e => e.owner === member.id && STATS[e.type]?.hero) ? member.heroType : null, research: {}, researchQueue: null, troopLevel: null};
   });
   const resources = full ? r.resources : r.resources.map(resource => {
     if (pointVisible(sources, resource)) memory.resources.set(resource.id, resource.amount);
@@ -256,9 +265,9 @@ export function snapshotFor(r, viewer) {
     return memory.camps.get(camp.id) || {id: camp.id, x: camp.x, y: camp.y, reward: camp.reward, cleared: false};
   });
   return {
-    code: r.code, mode: r.mode || DEFAULT_MODE, maxPlayers: modeFor(r).maxPlayers, maxHumans: modeFor(r).maxHumans,
+    code: r.code, mode: r.mode || DEFAULT_MODE, difficulty: r.difficulty || DEFAULT_DIFFICULTY, maxPlayers: modeFor(r).maxPlayers, maxHumans: modeFor(r).maxHumans,
     phase: r.phase, tick: r.tick, time: r.time, winner: r.winner, winningTeam: r.winningTeam ?? null, winners: r.winners || [],
-    players, entities: full ? entities : entities.map(e => alliedMatch(r, p.id, e.owner) ? e : {...e, order: null, queue: [], progress: 0, inventory: [], cooldowns: {}, researchJob: null}),
+    players, entities: full ? entities : entities.map(e => alliedMatch(r, p.id, e.owner) ? e : {...e, order: null, activity: null, rally: null, queue: [], progress: 0, inventory: [], cooldowns: {}, researchJob: null, troopUpgrade: null}),
     mapId: r.mapId, camps, resources,
     combatEvents: full ? r.combatEvents : visibleEvents(r.combatEvents, sources, visibleIds),
     spellEvents: full ? r.spellEvents || [] : visibleEvents(r.spellEvents, sources, visibleIds),

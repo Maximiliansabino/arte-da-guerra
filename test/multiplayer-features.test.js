@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {server} from '../server.js';
 import {HERO_TYPES} from '../public/rules.js';
 
-test('quatro clientes recebem ataques e evolução compartilhados entre aliados, preservando névoa inimiga', {timeout: 45000}, async () => {
+test('quatro clientes recebem ataques e evolução de cidadela compartilhados entre aliados, preservando névoa inimiga', {timeout: 60000}, async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const controller = new AbortController();
@@ -16,7 +16,7 @@ test('quatro clientes recebem ataques e evolução compartilhados entre aliados,
     return {status: response.status, body: await response.json()};
   };
   const waitFor = async predicate => {
-    const deadline = Date.now() + 38000;
+    const deadline = Date.now() + 50000;
     while (!predicate()) {
       if (Date.now() > deadline) throw Error('O estado esperado não chegou aos quatro clientes.');
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -57,10 +57,11 @@ test('quatro clientes recebem ataques e evolução compartilhados entre aliados,
       })().catch(error => { if (!controller.signal.aborted) throw error; }));
     }
     await waitFor(() => latest.filter(Boolean).length === 4);
-    const first = latest.slice(), hallIds = [], workerIds = [];
+    const first = latest.slice(), hallIds = [], workerIds = [], citadelIds = [];
     for (let i = 0; i < 4; i++) {
       const session = sessions[i], own = first[i].entities.filter(e => e.owner === session.id);
       const citadel = own.find(e => e.type === 'base'), workers = own.filter(e => e.type === 'worker');
+      citadelIds.push(citadel.id);
       workerIds.push(workers[0].id);
       const site = {x: citadel.x + (citadel.x < 900 ? 100 : -100), y: citadel.y + (citadel.y < 900 ? 130 : -130)};
       const builder = workers.slice().sort((a, b) => Math.hypot(a.x - site.x, a.y - site.y) - Math.hypot(b.x - site.x, b.y - site.y))[0];
@@ -88,9 +89,10 @@ test('quatro clientes recebem ataques e evolução compartilhados entre aliados,
     }
     // POST accepts an order before the next SSE tick; wait until the snapshot
     // includes the hero purchase before reading the remaining gold/wood.
-    await waitFor(() => sessions.every((session,i)=>latest[i].players.find(p=>p.id===session.id).heroType) && latest[0].players[0].gold >= 80 && latest[0].players[0].wood >= 40);
-    assert.equal((await post('command', {type: 'upgrade', ids: [workerIds[0]]}, sessions[0])).status, 200);
-    await waitFor(() => latest.slice(0,2).every(state=>state.entities.find(e=>e.id===workerIds[0])?.level===2) && sessions.every((session,i)=>latest[i].entities.some(e=>e.owner===session.id&&e.type===HERO_TYPES[i])));
+    await waitFor(() => sessions.every((session,i)=>latest[i].players.find(p=>p.id===session.id).heroType) && latest[0].players[0].gold >= 240 && latest[0].players[0].wood >= 180);
+    assert.equal((await post('command', {type: 'upgrade', ids: [workerIds[0]]}, sessions[0])).status, 400, 'tropas agora evoluem coletivamente no quartel III');
+    assert.equal((await post('command', {type: 'upgrade', ids: [citadelIds[0]]}, sessions[0])).status, 200);
+    await waitFor(() => latest.slice(0,2).every(state=>state.entities.find(e=>e.id===citadelIds[0])?.level===2) && sessions.every((session,i)=>latest[i].entities.some(e=>e.owner===session.id&&e.type===HERO_TYPES[i])));
     for (let i = 0; i < 4; i++) {
       assert.equal(latest[i].players.find(p=>p.id===sessions[i].id).heroType,HERO_TYPES[i]);
       const alliedIndex=i%2?i-1:i+1;assert.equal(latest[i].players.find(p=>p.id===sessions[alliedIndex].id).heroType,HERO_TYPES[alliedIndex]);

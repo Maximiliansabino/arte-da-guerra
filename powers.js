@@ -1,5 +1,5 @@
 import {ABILITIES, HERO_ABILITIES, ITEMS, RESEARCH, heroLevelFromXP, researchCost} from './public/legends.js';
-import {STATS, entityStats, heroMultiplier, allied, WORLD} from './public/rules.js';
+import {STATS, entityStats, heroMultiplier, allied, WORLD, collectiveUpgradeCost, collectiveUpgradeDuration, collectiveUpgradeError, combatResearchError} from './public/rules.js';
 import {terrainBlocked, segmentClear} from './public/terrain.js';
 import {canSee} from './match.js';
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -84,7 +84,9 @@ export function useItem(r,p,e,a) {
 }
 export function startResearch(r,p,e,a) {
   const research=Object.hasOwn(RESEARCH,a.research)?RESEARCH[a.research]:null;
-  if(e?.type!=='workshop'||e.construct||e.upgrade||e.queue.length||e.researchJob||!research)throw Error('Selecione uma Oficina Encantada pronta e livre.');
+  if(e?.type!=='workshop'||e.owner!==p.id||e.hp<=0||e.construct||e.upgrade||e.queue.length||e.researchJob||e.troopUpgrade||!research)throw Error('Selecione uma Oficina Encantada pronta e livre.');
+  const prerequisite=combatResearchError(r,p.id,a.research);
+  if(prerequisite)throw Error(prerequisite);
   const level=(p.research?.[a.research]||0)+1;
   if(level>research.maxLevel)throw Error('Pesquisa já está no nível máximo.');
   if(r.entities.some(b=>b.owner===p.id&&b.researchJob?.id===a.research))throw Error('Esta pesquisa já está em andamento.');
@@ -93,6 +95,15 @@ export function startResearch(r,p,e,a) {
   p.gold-=cost[0];p.wood-=cost[1];
   e.researchJob={id:a.research,remaining:research.duration*level,duration:research.duration*level,level};
 }
+
+export function startTroopUpgrade(r,p,e) {
+  const error=collectiveUpgradeError(r,p.id,e);
+  if(error)throw Error(error);
+  const cost=collectiveUpgradeCost(p),duration=collectiveUpgradeDuration(p);
+  p.gold-=cost[0];p.wood-=cost[1];
+  e.troopUpgrade={level:(p.troopLevel||1)+1,remaining:duration,duration};
+}
+
 export function tickPowers(r,dt) {
   r.spellEvents=(r.spellEvents||[]).filter(event=>r.time-event.at<Math.max(1.2,event.duration+.5));
   for(const e of r.entities){
@@ -108,6 +119,23 @@ export function tickPowers(r,dt) {
         const p=r.players.find(p=>p.id===e.owner);p.research??={};p.research[job.id]=job.level;
         for(const own of r.entities.filter(t=>t.owner===p.id))own.research={...p.research};
         e.researchJob=null;
+      }
+    }
+    if(e.troopUpgrade){
+      const job=e.troopUpgrade;job.remaining=Math.max(0,job.remaining-dt);
+      if(job.remaining<1e-9){
+        const p=r.players.find(p=>p.id===e.owner);
+        if(p&&!p.defeated){
+          p.troopLevel=job.level;
+          for(const own of r.entities){
+            if(own.owner!==p.id||own.hp<=0||STATS[own.type].building)continue;
+            const oldMax=own.maxHp;
+            own.level=job.level;own.maxHp=entityStats(own).hp;
+            own.hp=Math.min(own.maxHp,own.hp+own.maxHp-oldMax);
+          }
+          emitSpell(r,e,'troopUpgrade',e,{kind:'levelUp',radius:100,duration:1.4,color:'#ffe3a0'});
+        }
+        e.troopUpgrade=null;
       }
     }
   }

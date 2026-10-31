@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {room, addPlayer, start, spawn, command, step, snapshot} from '../game.js';
 import {
   COST, STATS, HEROES, HERO_TYPES, BUILD_RULES, MAX_LEVEL,
-  entityStats, upgradeCost, upgradeDuration, trainDuration,
+  entityStats, upgradeCost, upgradeDuration, trainDuration, collectiveUpgradeDuration,
   placementError, connectedBuildings
 } from '../public/rules.js';
 
@@ -180,8 +180,8 @@ test('salão, recursos e posse são necessários para recrutar; falha não conso
   assert.equal(p.heroType, null);
 });
 
-test('evolução cobra uma vez, leva tempo, melhora atributos e preserva o dano já sofrido', () => {
-  const r = setup(), p = r.players[0], unit = spawn(r, p, 'soldier', 700, 700);
+test('evolução de construção cobra uma vez, leva tempo e preserva o dano já sofrido', () => {
+  const r = setup(), p = r.players[0], unit = spawn(r, p, 'tower', 700, 700);
   unit.hp -= 60;
   const before = funds(p), cost = upgradeCost(unit), duration = upgradeDuration(unit);
   const original = entityStats(unit), oldHp = unit.hp;
@@ -199,7 +199,6 @@ test('evolução cobra uma vez, leva tempo, melhora atributos e preserva o dano 
   assert.ok(!unit.upgrade);
   const upgraded = entityStats(unit);
   assert.ok(upgraded.damage > original.damage);
-  assert.ok(upgraded.speed > original.speed);
   assert.equal(unit.maxHp, upgraded.hp);
   assert.equal(unit.maxHp - unit.hp, 60);
   assert.ok(upgradeCost(unit).every((value, i) => value > cost[i]));
@@ -209,8 +208,8 @@ test('evolução cobra uma vez, leva tempo, melhora atributos e preserva o dano 
   rejectedWithoutCost(r, p, {type: 'upgrade', ids: [unit.id]});
 });
 
-test('evolução rejeita inimigos, seleção múltipla, falta de madeira, construção e fila ativa', () => {
-  const r = setup(), p = r.players[0], unit = spawn(r, p, 'soldier', 700, 700);
+test('evolução de construção rejeita inimigos, seleção múltipla, falta de madeira, obra e fila ativa', () => {
+  const r = setup(), p = r.players[0], unit = spawn(r, p, 'tower', 700, 700);
   const barracks = spawn(r, p, 'barracks', 400, 450);
   rejectedWithoutCost(r, r.players[1], {type: 'upgrade', ids: [unit.id]});
   rejectedWithoutCost(r, p, {type: 'upgrade', ids: [unit.id, barracks.id]});
@@ -220,18 +219,17 @@ test('evolução rejeita inimigos, seleção múltipla, falta de madeira, constr
   barracks.construct = 2;
   rejectedWithoutCost(r, p, {type: 'upgrade', ids: [barracks.id]});
   barracks.construct = 0;
-  command(r, p, {type: 'train', ids: [barracks.id], unit: 'archer'});
+  command(r, p, {type: 'train', ids: [barracks.id], unit: 'soldier'});
   rejectedWithoutCost(r, p, {type: 'upgrade', ids: [barracks.id]});
   advance(r, 8.2);
   command(r, p, {type: 'upgrade', ids: [barracks.id]});
   rejectedWithoutCost(r, p, {type: 'train', ids: [barracks.id], unit: 'soldier'});
 });
 
-test('quartel evoluído produz mais rápido e trabalhador evoluído coleta mais', () => {
+test('quartel evoluído produz mais rápido e treinamento coletivo melhora coleta do trabalhador', () => {
   const r = setup(), p = r.players[0], barracks = spawn(r, p, 'barracks', 400, 450);
   const worker = spawn(r, p, 'worker', 700, 700);
   command(r, p, {type: 'upgrade', ids: [barracks.id]});
-  command(r, p, {type: 'upgrade', ids: [worker.id]});
   advance(r, 16.2);
   assert.equal(barracks.level, 2);
   const duration = trainDuration('soldier', barracks);
@@ -239,6 +237,12 @@ test('quartel evoluído produz mais rápido e trabalhador evoluído coleta mais'
   command(r, p, {type: 'train', ids: [barracks.id], unit: 'soldier'});
   advance(r, duration + .2);
   assert.ok(r.entities.some(e => e.type === 'soldier' && e.owner === p.id));
+  command(r, p, {type: 'upgrade', ids: [barracks.id]});
+  advance(r, upgradeDuration(barracks) + .2);
+  assert.equal(barracks.level, 3);
+  command(r, p, {type: 'troopUpgrade', ids: [barracks.id]});
+  advance(r, collectiveUpgradeDuration(p) + .2);
+  assert.equal(worker.level, 2);
   r.resources.push({id: 'test-gold', type: 'gold', amount: 1000, x: worker.x, y: worker.y});
   command(r, p, {type: 'gather', ids: [worker.id], target: 'test-gold'});
   const before = p.gold;
@@ -251,6 +255,7 @@ test('ataques automáticos e ordenados geram eventos autoritativos de corpo a co
     for (const manual of [false, true]) {
       const r = setup(), [p, enemy] = r.players;
       const attacker = spawn(r, p, type, 800, 800), target = spawn(r, enemy, 'worker', 820, 800);
+      const from = {x:attacker.x,y:attacker.y}, to = {x:target.x,y:target.y};
       if (manual) command(r, p, {type: 'attack', ids: [attacker.id], target: target.id});
       const oldHp = target.hp;
       step(r);
@@ -258,8 +263,8 @@ test('ataques automáticos e ordenados geram eventos autoritativos de corpo a co
       assert.ok(event, `${type}: ${manual ? 'ordem' : 'defesa automática'} precisa ser visível`);
       assert.equal(event.kind, kind);
       assert.equal(event.owner, p.id);
-      assert.deepEqual(event.from, {x: 800, y: 800});
-      assert.deepEqual(event.to, {x: 820, y: 800});
+      assert.deepEqual(event.from, from);
+      assert.deepEqual(event.to, to);
       assert.equal(event.damage, oldHp - target.hp);
       assert.equal(event.at, r.time);
       assert.ok(Number.isSafeInteger(event.id));
