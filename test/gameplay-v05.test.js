@@ -132,6 +132,7 @@ test('jogabilidade: torre construída sobre unidades perto da floresta libera os
 test('jogabilidade: todos os recrutas saem por um ponto livre e conseguem deixar a produção', () => {
   for(const type of ['worker','soldier','archer','healer','siege',...HERO_TYPES]) {
     const {r,p}=setup(true), producerType=type==='worker'?'base':HERO_TYPES.includes(type)?'hall':type==='siege'?'workshop':'barracks';
+    if(HERO_TYPES.includes(type))p.faction=type.split('_')[0];
     const producer=spawn(r,p,producerType,450,500); producer.level=3;
     command(r,p,{type:'train',ids:[producer.id],unit:type}); advance(r,trainDuration(type,producer)+.2);
     const unit=r.entities.find(e=>e.owner===p.id&&e.type===type&&!STATS[e.type].building);

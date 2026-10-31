@@ -1,44 +1,28 @@
-ARTE DA GUERRA - LENDAS DA FRONTEIRA 0.8.1
+ARTE DA GUERRA 0.9.0
 
-Este download inclui o jogo e o servidor local. Ainda nao e um instalador .exe.
-Requer Node.js 22 ou superior: https://nodejs.org/
-
-WINDOWS
 1. Extraia TODO o ZIP para uma pasta.
-2. Instale o Node.js, caso ainda nao esteja instalado.
-3. Abra INICIAR-JOGO.cmd com dois cliques.
-4. Quando aparecer a mensagem do servidor, abra http://localhost:3000
-5. Escolha treinar contra uma maquina ou criar uma sala com amigos.
-6. No salao, escolha duplas, todos contra todos ou ate 4 amigos contra 1 a 4 maquinas. O automatico iguala as equipes.
-7. Escolha a dificuldade das maquinas: facil, normal ou dificil.
-8. Escolha o mapa. As posicoes iniciais sao sorteadas ao iniciar a partida.
-9. O Colosso desperta aos 7:30; derrote-o para liberar a segunda vaga de heroi.
-10. Selecione seu bonde e use Ctrl + 1 a 9 para salvar; so o numero o seleciona.
-11. Use Q/W no bonde; R libera no nivel 5. Tab alterna entre dois herois.
-12. Os itens agora usam Alt + 1, 2 e 3, ou os botoes na tela.
-13. Use as setas, bordas ou botao do meio para mover a camera. WASD nao move.
-14. Selecione varios quarteis e compre uma unidade para pedir uma em cada
-    quartel apto. O botao mostra a quantidade e o custo total.
-15. Clique nos nomes dos herois ou em Conheca as lendas para consultar as fichas.
-16. Confira a versao em execucao no cabecalho e no lobby.
-17. Para construir longe, marque o local valido: o trabalhador caminha ate ele.
-    Recursos sao cobrados quando a obra comeca; parar antes disso nao cobra.
-18. O heroi conserva XP e nivel ao ser recrutado novamente apos morrer.
+2. Instale Node.js 22 ou superior, se necessário: https://nodejs.org/
+3. No Windows, abra INICIAR-JOGO.cmd. No macOS/Linux, execute npm start.
+4. Abra http://localhost:3000 no navegador e mantenha o servidor ligado.
+5. Escolha sua tribo e treine contra a máquina ou crie uma sala com amigos.
 
-OUTROS SISTEMAS
-Abra um terminal nesta pasta e execute: npm start
-Depois abra http://localhost:3000 no navegador.
-O servidor e os testes desta versao foram executados em Linux.
-O iniciador Windows foi preservado; confira a instalacao do Node.js no seu PC.
+NOVIDADES
+Fortaleza, Forja, Vento e Pulso: seis heróis por tribo, 72 habilidades,
+nomes e desenhos próprios, quatro exclusivos da Oficina III e itens raros.
+O nome é Arte da Guerra; os termos da interface são tribo e grupo.
+Passe o mouse nos botões para conhecer o efeito, custo e requisito.
+A R só libera no nível 5; o Colosso concede a segunda vaga de herói.
+Q/W/R: herói ativo; E: exclusivo; Alt+1/2/3: itens; Alt+4: item raro.
+Ctrl+1 a 9 salva grupos de até 12 unidades; o número seleciona o grupo.
 
-JOGAR COM AMIGOS
-So o anfitriao precisa executar o servidor e ter Node.js.
-Os convidados acessam o endereco dele pelo navegador.
-Na mesma rede: configure ALLOWED_HOSTS e abra http://IP-LOCAL-DO-ANFITRIAO:3000
-Veja o exemplo de configuracao no README.md.
-Em redes diferentes: e preciso configurar um tunel ou hospedagem externa.
-O convite localhost NAO funciona em outro computador.
-O download, por si so, nao cria um servidor publico na internet.
+ATUALIZAÇÃO DO REPOSITÓRIO
+Leia APLICAR-0.9.0.txt antes de integrar ao trabalho do seu amigo.
+Não substitua às cegas arquivos de uma versão posterior do GitHub.
 
-Mantenha o PC e o servidor ligados. Reiniciar o servidor apaga as salas.
-Veja README.md para controles, regras, publicacao e limitacoes.
+AMIGOS
+Todos acessam o mesmo servidor. Localhost não funciona no computador
+convidado. Consulte README.md para IP local, ALLOWED_HOSTS e hospedagem.
+O ZIP não publica automaticamente o jogo na internet.
+
+VALIDAÇÃO
+Consulte VALIDACAO-0.9.0.md para testes executados e limites observados.

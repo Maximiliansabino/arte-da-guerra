@@ -1,3 +1,5 @@
+import * as catalog from '../public/tribes-data.js';
+import {tooltipText} from '../public/tooltips.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -26,7 +28,7 @@ const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 class Element {
   constructor(tagName = 'div') {
     this.tagName = tagName.toUpperCase(); this.children = []; this.value = '';
-    this.className = ''; this.hidden = false; this.disabled = false; this.open = false;
+    this.dataset={}; this.attributes={}; this.className = ''; this.hidden = false; this.disabled = false; this.open = false;
     this.style = {setProperty(name, value) {this[name] = value;}};
     this.classList = {
       contains: name => this.className.split(/\s+/).includes(name),
@@ -44,7 +46,10 @@ class Element {
   append(...elements) {this.children.push(...elements);}
   replaceChildren(...elements) {this.text = ''; this.children = [...elements];}
   getBoundingClientRect() {return {left: 0, top: 0, width: 1000, height: 600};}
-  setAttribute(name,value) {this[name]=value;}
+  setAttribute(name,value) {this.attributes[name]=String(value);this[name]=value;if(name==='aria-disabled')this.disabled=value==='true';}
+  getAttribute(name){return this.attributes[name];}
+  get title(){return this.dataset.tooltip || this._title || '';}
+  set title(value){this._title=value;}
   focus() {}
   setPointerCapture() {}
   showModal() {this.open = true;}
@@ -56,8 +61,8 @@ function entity(id, type, owner = 'p1', x = 400, y = 220) {
 }
 function fixture() {
   return {code: 'test-room', mode:'ffa', phase: 'playing', tick: 10, time: 1, combatEvents: [], spellEvents: [], resources: [], players: [
-    {id: 'p1', slot: 0, team:0, faction:'mata', research:{weapons:0,armor:0,harvest:0}, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
-    {id: 'p2', slot: 1, team:1, faction:'mares', research:{weapons:0,armor:0,harvest:0}, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
+    {id: 'p1', slot: 0, team:0, faction:'forj', research:{weapons:0,armor:0,harvest:0}, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
+    {id: 'p2', slot: 1, team:1, faction:'vent', research:{weapons:0,armor:0,harvest:0}, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
   ], entities: [entity(1, 'base', 'p1', 220, 220), entity(2, 'hall'),
     entity(3, 'worker', 'p1', 300, 350), entity(4, 'base', 'p2', 1580, 1580)]};
 }
@@ -76,7 +81,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), createCombatEffects, createSceneArt, drawMercenary, NEUTRAL_ART, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
+    ...catalog, tooltipText, initTooltips:()=>({}), heroPortrait:()=>new Element('canvas'), ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), createCombatEffects, createSceneArt, drawMercenary, NEUTRAL_ART, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
     TextDecoder, AbortController, console,
@@ -102,28 +107,28 @@ test('cliente: salão mostra seis escolhas e envia recrutamento com identidade d
   const h = harness(); const cards = heroButtons(h);
   assert.equal(cards.length, 6);
   for (const [index, card] of cards.entries()) {
-    const hero = rules.HEROES[rules.HERO_TYPES[index]];
+    const hero = rules.HEROES[rules.HERO_TYPES.filter(type=>type.startsWith('forj_'))[index]];
     assert.ok(card.textContent.includes(hero.name));
-    assert.ok(card.textContent.includes(rules.LABELS[hero.strongAgainst]));
-    assert.ok(card.textContent.includes(rules.LABELS[hero.weakAgainst]));
+    assert.ok(card.dataset.tooltip.includes(hero.strong));
+    assert.ok(card.dataset.tooltip.includes(hero.weak));
     assert.equal(card.disabled, false);
   }
   await cards[2].onclick();
-  assert.deepEqual(h.requests[0].body, {ids: [2], type: 'train', unit: rules.HERO_TYPES[2]});
+  assert.deepEqual(h.requests[0].body, {ids: [2], type: 'train', unit: rules.HERO_TYPES.filter(type=>type.startsWith('forj_'))[2]});
   assert.equal(h.requests[0].options.headers.Authorization, 'Bearer test-token');
 });
 
 test('cliente: escolha permanente, herói vivo e fila em outro salão bloqueiam duplicação', () => {
   const h = harness();
-  h.initial.players[0].heroType = rules.HERO_TYPES[1];
+  h.initial.players[0].heroType = rules.HERO_TYPES.filter(type=>type.startsWith('forj_'))[1];
   h.run('refreshActions()');
   assert.equal(heroButtons(h).filter(card => !card.disabled).length, 1);
   assert.ok(heroButtons(h)[1].classList.contains('chosen'));
-  h.initial.entities.push(entity(10, rules.HERO_TYPES[1]));
+  h.initial.entities.push(entity(10, rules.HERO_TYPES.filter(type=>type.startsWith('forj_'))[1]));
   h.run('refreshActions()');
   assert.ok(heroButtons(h).every(card => card.disabled));
   h.initial.entities.pop();
-  const secondHall = entity(11, 'hall'); secondHall.queue.push(rules.HERO_TYPES[1]);
+  const secondHall = entity(11, 'hall'); secondHall.queue.push(rules.HERO_TYPES.filter(type=>type.startsWith('forj_'))[1]);
   h.initial.entities.push(secondHall); h.run('refreshActions()');
   assert.ok(heroButtons(h).every(card => card.disabled));
   secondHall.queue = []; h.run('refreshActions()');
@@ -142,7 +147,7 @@ test('cliente: evolução de prédios respeita custo, fila, obra e nível máxim
   h.initial.players[0].wood = 0; h.run('refreshActions()');
   assert.equal(upgradeButton(h).disabled, true);
   h.initial.players[0].wood = 5000; h.select(2);
-  h.initial.entities[1].queue = [rules.HERO_TYPES[0]]; h.run('refreshActions()');
+  h.initial.entities[1].queue = [rules.HERO_TYPES.filter(type=>type.startsWith('forj_'))[0]]; h.run('refreshActions()');
   assert.equal(upgradeButton(h).disabled, true);
   h.initial.entities[1].queue = [];
   h.initial.entities[1].upgrade = {level: 2, remaining: 8, duration: 16}; h.run('refreshActions()');
@@ -178,12 +183,12 @@ test('cliente: terreno válido é verde, inválido é vermelho e clique rejeitad
 test('cliente: salão usa hitbox de prédio e seis heróis, níveis e evoluções são renderizados', () => {
   const h = harness();
   assert.equal(h.run('entityAt({x:435,y:220}).id'), 2, 'salão selectable beyond unit hitbox');
-  h.initial.entities.push(...rules.HERO_TYPES.map((type, index) => ({...entity(10 + index, type, 'p1', 500 + index * 50, 500), level: 3})));
+  h.initial.entities.push(...rules.HERO_TYPES.filter(type=>type.startsWith('forj_')).map((type, index) => ({...entity(10 + index, type, 'p1', 500 + index * 50, 500), level: 3})));
   h.initial.entities.push({...entity(30,'soldier','p1',700,600),level:3});
   h.initial.entities[1].upgrade = {level: 2, duration: 16, remaining: 8};
   h.run('render(1016)');
   const text = h.calls.filter(call => call.name === 'fillText').map(call => call.args[0]);
-  for (const hero of Object.values(rules.HEROES)) assert.ok(text.includes(`${hero.name} · 1`), `hero label must show ${hero.name} and its heroic level`);
+  for (const hero of Object.values(rules.HEROES).filter(h=>h.tribeId==='forj')) assert.ok(text.includes(`${hero.name} · 1`), `hero label must show ${hero.name} and its heroic level`);
   assert.ok(text.includes('III'));
   assert.ok(h.calls.some(call => call.name === 'fillRect' && call.fillStyle === '#e8c272'));
 });
@@ -255,30 +260,30 @@ test('cliente: cooperativo mostra quatro amigos e quatro máquinas e limita cont
   assert.equal(h.elements.get('#mode').disabled,true);
   assert.equal(h.elements.get('#start').disabled,true);
   assert.equal(h.elements.get('#faction').disabled,false,'each friend controls their own order');
-  h.elements.get('#faction').value='astros';
+  h.elements.get('#faction').value='puls';
   await h.elements.get('#faction').onchange();
-  assert.deepEqual(h.requests.at(-1).body,{action:'faction',slot:1,faction:'astros'});
+  assert.deepEqual(h.requests.at(-1).body,{action:'faction',slot:1,faction:'puls'});
   h.initial.phase='playing'; h.run('updateUI()');
   assert.equal(h.elements.get('#faction').disabled,true);
 });
 
 test('cliente: Q/W/R usam alvo, alcance, mana, recarga e nível heroico', async () => {
-  const h=harness(), hero=entity(10,'bastion'); h.initial.entities.push(hero); h.select(10);
+  const h=harness(), hero=entity(10,'forj_03'); h.initial.entities.push(hero); h.select(10);
   assert.equal(actionsWith(h,'skill-action').length,3);
   assert.equal(actionsWith(h,'ultimate-action')[0].disabled,true);
   press(h,'r'); assert.equal(h.run('spellTarget'),null);
   assert.equal(h.requests.length,0);
-  press(h,'q'); assert.equal(h.run('spellTarget.ability'),'roots');
+  press(h,'q'); assert.equal(h.run('spellTarget.ability'),'forj_03_q');
   h.run('camera={x:900,y:220};zoom=1');
   await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});
   assert.equal(h.requests.length,0,'out of range click sends no request');
-  assert.equal(h.run('spellTarget.ability'),'roots','invalid target remains armed');
+  assert.equal(h.run('spellTarget.ability'),'forj_03_q','invalid target remains armed');
   assert.ok(h.run('targetError({x:NaN,y:220})'));
   h.run('camera={x:500,y:220}');
   await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});
-  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'cast',ability:'roots',x:500,y:220});
+  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'cast',ability:'forj_03_q',x:500,y:220});
   assert.equal(h.run('spellTarget'),null);
-  hero.cooldowns.roots=4.2; h.run('refreshActions()');
+  hero.cooldowns.forj_03_q=4.2; h.run('refreshActions()');
   assert.equal(actionsWith(h,'skill-action')[0].disabled,true);
   press(h,'q'); assert.equal(h.requests.length,1); assert.equal(h.run('spellTarget'),null);
   hero.mana=0; h.run('refreshActions()');
@@ -287,14 +292,14 @@ test('cliente: Q/W/R usam alvo, alcance, mana, recarga e nível heroico', async 
   hero.mana=150; hero.heroLevel=5; h.run('refreshActions()');
   assert.equal(actionsWith(h,'ultimate-action')[0].disabled,false);
   press(h,'w'); await Promise.resolve();
-  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'cast',ability:'bark',x:400,y:220});
-  press(h,'r'); assert.equal(h.run('spellTarget.ability'),'forest');
+  assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'cast',ability:'forj_03_w',x:400,y:220});
+  press(h,'r'); assert.equal(h.run('spellTarget.ability'),'forj_03_r');
   press(h,'Escape'); assert.equal(h.run('spellTarget'),null);
-  assert.match(h.elements.get('#hero-status').textContent,/Lenda 5\/5 · Mana 150\/150/);
+  assert.match(h.elements.get('#hero-status').textContent,/Herói 5\/5 · Mana 150\/150/);
 });
 
 test('cliente: mercado e inventário enviam item e espaço corretos e atualizam bloqueios', async () => {
-  const h=harness(), hero=entity(10,'bastion'); h.initial.entities.push(hero); h.select(10);
+  const h=harness(), hero=entity(10,'forj_03'); h.initial.entities.push(hero); h.select(10);
   assert.equal(actionsWith(h,'inventory-action').length,3);
   assert.ok(actionsWith(h,'inventory-action').every(button=>button.disabled));
   assert.ok(actionsWith(h,'shop-action').every(button=>!button.disabled));
@@ -387,7 +392,7 @@ test('cliente: conserto aparece no trabalhador e clique direito aceita estrutura
   const h=harness(), tower=entity(10,'tower','p1',400,350);tower.hp-=40;
   h.initial.entities.push(tower);h.select(3);
   const repair=actionsWith(h,'work-action').find(button=>button.textContent.includes('Consertar'));
-  assert.match(repair.textContent,/Torre próxima · 3 vida\/s/);
+  assert.match(repair.textContent,/Torre de Cobre próxima · 3 vida\/s/);
   await repair.onclick();assert.deepEqual(h.requests.at(-1).body,{ids:[3],type:'repair',target:10});
   h.initial.players[1].team=0;tower.owner='p2';h.run('camera={x:400,y:350};zoom=1');
   await h.elements.get('#map').onpointerdown({button:2,clientX:500,clientY:300});
@@ -420,14 +425,14 @@ test('cliente: painel compacto agrupa ociosos e exclui combate automático, cole
 
 test('cliente: mostra alvo real de combate, marca o alvo no mapa e explica bloqueios', () => {
   const h=harness(), soldier=entity(10,'soldier');soldier.activity={type:'attacking',target:4};h.initial.entities.push(soldier);h.select(10);
-  assert.match(h.elements.get('#activity-status').textContent,/Atacando: Cidadela · Bia/);
+  assert.match(h.elements.get('#activity-status').textContent,/Atacando: Casa da Fornalha · Bia/);
   h.run('drawOrderFeedback(1000)');
-  assert.ok(h.calls.some(call=>call.name==='fillText'&&call.args[0]==='Alvo · Cidadela'));
+  assert.ok(h.calls.some(call=>call.name==='fillText'&&call.args[0]==='Alvo · Casa da Fornalha'));
   soldier.activity={type:'blocked',target:4,reason:'Passagem fechada. Libere a saída.'};h.run('refreshActions()');
   assert.equal(h.elements.get('#activity-status').textContent,'Passagem fechada. Libere a saída.');
   assert.equal(h.elements.get('#activity-status').classList.contains('blocked'),true);
   h.initial.entities=h.initial.entities.filter(e=>e.id!==4);h.calls.length=0;h.run('drawOrderFeedback(1000)');
-  assert.equal(h.calls.some(call=>call.name==='fillText'&&call.args[0]==='Alvo · Cidadela'),false,'alvo oculto não permanece desenhado');
+  assert.equal(h.calls.some(call=>call.name==='fillText'&&call.args[0]==='Alvo · Casa da Fornalha'),false,'alvo oculto não permanece desenhado');
 });
 
 test('cliente: anima ferramenta e recursos somente durante coleta ou conserto confirmados', () => {
@@ -454,19 +459,19 @@ test('cliente: bandeira da cidadela sobre ouro envia o recurso e mostra coleta a
 test('cliente: quartel comunica níveis de recrutamento e compra treinamento para toda a companhia', async () => {
   const h=harness(),barracks=entity(10,'barracks');h.initial.entities.push(barracks);h.select(10);
   const recruit=name=>h.actions().find(button=>button.children[0]?.textContent.endsWith(name));
-  assert.equal(recruit('Soldado').disabled,false);assert.equal(recruit('Arqueiro').disabled,true);assert.equal(recruit('Cuidador das Fontes').disabled,true);
+  assert.equal(recruit('Lanceiro de Cobre').disabled,false);assert.equal(recruit('Atirador de Rebites').disabled,true);assert.equal(recruit('Médico da Forja').disabled,true);
   assert.equal(actionsWith(h,'collective-action')[0].disabled,true);
-  barracks.level=2;h.run('refreshActions()');assert.equal(recruit('Arqueiro').disabled,false);assert.equal(recruit('Cuidador das Fontes').disabled,true);
-  barracks.level=3;h.run('refreshActions()');assert.equal(recruit('Cuidador das Fontes').disabled,false);
+  barracks.level=2;h.run('refreshActions()');assert.equal(recruit('Atirador de Rebites').disabled,false);assert.equal(recruit('Médico da Forja').disabled,true);
+  barracks.level=3;h.run('refreshActions()');assert.equal(recruit('Médico da Forja').disabled,false);
   let collective=actionsWith(h,'collective-action')[0];assert.equal(collective.disabled,false);assert.match(collective.textContent,/450.*300.*35 s/);
   await collective.onclick();assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'troopUpgrade'});
   barracks.troopUpgrade={level:2,remaining:17,duration:25};h.run('refreshActions()');
-  assert.equal(actionsWith(h,'collective-action')[0].disabled,true);assert.equal(recruit('Soldado').disabled,true);
+  assert.equal(actionsWith(h,'collective-action')[0].disabled,true);assert.equal(recruit('Lanceiro de Cobre').disabled,true);
   assert.match(h.elements.get('#detail').textContent,/Treinamento coletivo 2: 17 s/);
   barracks.troopUpgrade=null;h.initial.players[0].troopLevel=2;h.run('refreshActions()');
   collective=actionsWith(h,'collective-action')[0];assert.match(collective.textContent,/750.*500.*45 s/);
   h.initial.players[0].troopLevel=3;h.run('refreshActions()');assert.equal(actionsWith(h,'collective-action').length,0);
-  const hero=entity(11,'bastion');h.initial.entities.push(hero);h.select(11);assert.equal(upgradeButton(h),undefined);
+  const hero=entity(11,'forj_03');h.initial.entities.push(hero);h.select(11);assert.equal(upgradeButton(h),undefined);
 });
 
 test('cliente: dificuldade é configurável pelo anfitrião e treino difícil a aplica antes de iniciar', async () => {
@@ -488,9 +493,9 @@ test('cliente: fila mostra dois soldados e arqueiro em ordem, com produção e e
   assert.equal(h.elements.get('#production-panel').hidden,false);
   let rows=h.elements.get('#production-list').children;
   assert.equal(rows.length,3);
-  assert.match(rows[0].textContent,/1\..*Soldado.*Em produção.*50%.*6 s restantes/);
-  assert.match(rows[1].textContent,/2\..*Soldado.*Em espera/);
-  assert.match(rows[2].textContent,/3\..*Arqueiro.*Em espera/);
+  assert.match(rows[0].textContent,/1\..*Lanceiro de Cobre.*Em produção.*50%.*6 s restantes/);
+  assert.match(rows[1].textContent,/2\..*Lanceiro de Cobre.*Em espera/);
+  assert.match(rows[2].textContent,/3\..*Atirador de Rebites.*Em espera/);
   assert.equal(rows[0].children.find(e=>e.tagName==='PROGRESS').value,50);
   assert.equal(rows[1].children.some(e=>e.tagName==='PROGRESS'),false);
   assert.match(h.elements.get('#production-title').textContent,/3\/5.*2 em espera/);
@@ -498,9 +503,9 @@ test('cliente: fila mostra dois soldados e arqueiro em ordem, com produção e e
   assert.equal(h.elements.get('#production-list').children[0].children.find(e=>e.tagName==='PROGRESS').value,60,'progresso atualiza mesmo sem mudar seleção ou tamanho da fila');
   barracks.queue.shift();barracks.progress=0;h.run('refreshActions()');
   rows=h.elements.get('#production-list').children;
-  assert.equal(rows.length,2);assert.match(rows[0].textContent,/Soldado.*0%/);
+  assert.equal(rows.length,2);assert.match(rows[0].textContent,/Lanceiro de Cobre.*0%/);
   barracks.queue=['archer','soldier'];h.run('refreshActions()');
-  assert.match(h.elements.get('#production-list').children[0].textContent,/Arqueiro.*Em produção/,'conteúdo atualiza mesmo com igual tamanho de fila');
+  assert.match(h.elements.get('#production-list').children[0].textContent,/Atirador de Rebites.*Em produção/,'conteúdo atualiza mesmo com igual tamanho de fila');
 });
 
 test('cliente: unidade pronta sem saída permanece primeira, sem fingir que ainda está produzindo', () => {
@@ -512,15 +517,15 @@ test('cliente: unidade pronta sem saída permanece primeira, sem fingir que aind
   assert.match(rows[1].textContent,/Em espera/);
   assert.doesNotMatch(h.elements.get('#detail').textContent,/0 s/);
   h.run('render(1000)');
-  assert.ok(h.calls.some(c=>c.name==='fillText'&&c.args[0]==='Trabalhador · aguardando saída · +1 em espera'));
+  assert.ok(h.calls.some(c=>c.name==='fillText'&&c.args[0]==='Operário da Forja · aguardando saída · +1 em espera'));
 });
 
 test('cliente: painel da construção mostra obras, evolução, pesquisa e treinamento em andamento', () => {
   const h=harness(),hall=h.initial.entities[1];
   for(const [field,job,expected] of [
-    ['construct',5,/Construindo Salão das Lendas/],
-    ['upgrade',{level:2,remaining:8,duration:16},/Evoluindo Salão das Lendas para nível 2/],
-    ['researchJob',{id:'harvest',remaining:9,duration:18},/Pesquisando Coleta Cooperativa/],
+    ['construct',5,/Construindo Câmara dos Mestres/],
+    ['upgrade',{level:2,remaining:8,duration:16},/Evoluindo Câmara dos Mestres para nível 2/],
+    ['researchJob',{id:'harvest',remaining:9,duration:18},/Pesquisando Coleta Organizada/],
     ['troopUpgrade',{level:2,remaining:12.5,duration:25},/Treinamento coletivo II/]
   ]){
     hall[field]=job;h.run('refreshActions()');
@@ -534,7 +539,7 @@ test('cliente: painel da construção mostra obras, evolução, pesquisa e trein
 });
 
 test('cliente: fila é ocultada ao selecionar personagens e adversários, mas mostra várias construções próprias', () => {
-  const h=harness();h.initial.entities[1].queue=['bastion'];h.run('refreshActions()');
+  const h=harness();h.initial.entities[1].queue=['forj_03'];h.run('refreshActions()');
   assert.equal(h.elements.get('#production-panel').hidden,false);
   for(const code of ['selected=new Set([3])','selected=new Set([4])','selected=new Set()']){
     h.run(code+';refreshActions()');
@@ -544,7 +549,7 @@ test('cliente: fila é ocultada ao selecionar personagens e adversários, mas mo
   h.run('selected=new Set([1,2]);refreshActions()');
   assert.equal(h.elements.get('#production-panel').hidden,false);
   h.elements.get('#production-nav').children[1].onclick();
-  assert.match(h.elements.get('#production-list').textContent,/Curupira/);
+  assert.match(h.elements.get('#production-list').textContent,/Tovin/);
 });
 
 test('cliente: mapa é escolhido pelo anfitrião e treino aplica o terreno antes de iniciar', async () => {
@@ -567,8 +572,8 @@ test('cliente: mapa é escolhido pelo anfitrião e treino aplica o terreno antes
   assert.deepEqual(posts[2].body,{action:'map',mapId:'crystal-ridge'});
 });
 
-test('cliente: segunda vaga permite outra lenda paga, impede cópias e preserva as duas escolhas após morte', async () => {
-  const h=harness(),player=h.initial.players[0],first=rules.HERO_TYPES[0],second=rules.HERO_TYPES[1];
+test('cliente: segunda vaga permite outro herói pago, impede cópias e preserva as duas escolhas após morte', async () => {
+  const h=harness(),player=h.initial.players[0],first=rules.HERO_TYPES.filter(type=>type.startsWith('forj_'))[0],second=rules.HERO_TYPES.filter(type=>type.startsWith('forj_'))[1];
   player.heroType=first;player.heroTypes=[first];player.heroLimit=1;
   h.initial.entities.push(entity(10,first));h.run('updateUI()');
   assert.ok(heroButtons(h).every(card=>card.disabled));assert.equal(h.elements.get('#hero-capacity').textContent,'1/1');
@@ -586,9 +591,9 @@ test('cliente: segunda vaga permite outra lenda paga, impede cópias e preserva 
   player.gold=0;h.run('refreshActions()');assert.ok(heroButtons(h).every(card=>card.disabled),'vaga desbloqueada não dá herói gratuito');
 });
 
-test('cliente: F1 alterna as duas lendas vivas e centraliza a câmera sem selecionar inimigos', () => {
+test('cliente: F1 alterna os dois heróis vivos e centraliza a câmera sem selecionar inimigos', () => {
   const h=harness();h.initial.players[0].heroLimit=2;
-  h.initial.entities.push(entity(10,'bastion','p1',500,600),entity(12,'storm','p1',750,800),entity(9,'warden','p2',650,650));
+  h.initial.entities.push(entity(10,'forj_03','p1',500,600),entity(12,'forj_04','p1',750,800),entity(9,'forj_06','p2',650,650));
   press(h,'F1');assert.deepEqual(Array.from(h.run('[...selected]')),[10]);assert.deepEqual(JSON.parse(h.run('JSON.stringify(camera)')),{x:500,y:600});
   press(h,'F1');assert.deepEqual(Array.from(h.run('[...selected]')),[12]);assert.deepEqual(JSON.parse(h.run('JSON.stringify(camera)')),{x:750,y:800});
   press(h,'F1');assert.deepEqual(Array.from(h.run('[...selected]')),[10]);

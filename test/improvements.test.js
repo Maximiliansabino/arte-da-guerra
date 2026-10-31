@@ -96,20 +96,13 @@ test('construção inclui filas no limite populacional e mantém limite de 18 pr
   rejectedWithoutCost(limited, q, {type: 'build', ids: [builder.id], building: 'hall', x: 500, y: 220});
 });
 
-test('seis heróis distintos têm exatamente uma vantagem e uma fraqueza recíprocas', () => {
-  assert.equal(HERO_TYPES.length, 6);
-  assert.equal(new Set(HERO_TYPES).size, 6);
+test('24 heróis oferecem forças e fraquezas de uso sem vantagem automática por identidade', () => {
+  assert.equal(HERO_TYPES.length, 24);
+  assert.equal(new Set(HERO_TYPES).size, 24);
   for (const type of HERO_TYPES) {
     const hero = HEROES[type];
-    assert.ok(HERO_TYPES.includes(hero.strongAgainst));
-    assert.ok(HERO_TYPES.includes(hero.weakAgainst));
-    assert.notEqual(hero.strongAgainst, type);
-    assert.notEqual(hero.weakAgainst, type);
-    assert.notEqual(hero.strongAgainst, hero.weakAgainst);
-    assert.equal(HEROES[hero.strongAgainst].weakAgainst, type);
-    assert.equal(HEROES[hero.weakAgainst].strongAgainst, type);
-    assert.equal(HERO_TYPES.filter(other => HEROES[other].strongAgainst === type).length, 1);
-    assert.equal(HERO_TYPES.filter(other => HEROES[other].weakAgainst === type).length, 1);
+    assert.ok(hero.strong.length>20);assert.ok(hero.weak.length>20);
+    assert.equal(hero.strongAgainst,null);assert.equal(hero.weakAgainst,null);
     assert.deepEqual(COST[type], COST[HERO_TYPES[0]], 'heróis têm mesmo custo de escolha');
   }
   const profiles = HERO_TYPES.map(type => JSON.stringify(STATS[type]));
@@ -254,7 +247,7 @@ test('quartel evoluído produz mais rápido e treinamento militar não acelera c
 });
 
 test('ataques automáticos e ordenados geram eventos autoritativos de corpo a corpo, flecha e magia', () => {
-  for (const [type, kind] of [['soldier', 'melee'], ['archer', 'arrow'], ['tower', 'arrow'], ['storm', 'bolt']]) {
+  for (const [type, kind] of [['soldier', 'melee'], ['archer', 'arrow'], ['tower', 'arrow'], ['fort_04', 'bolt']]) {
     for (const manual of [false, true]) {
       const r = setup(), [p, enemy] = r.players;
       const attacker = spawn(r, p, type, 800, 800), target = spawn(r, enemy, 'worker', 820, 800);
@@ -295,7 +288,7 @@ test('eventos preservam impacto após morte, não duplicam por snapshot e expira
   assert.ok(next.id > event.id);
 });
 
-test('modificadores dos heróis afetam dano real: +25%, -20% e três oponentes neutros', () => {
+test('ataques dos 24 heróis não recebem multiplicadores por identidade do adversário', () => {
   for (const type of HERO_TYPES) {
     for (const targetType of HERO_TYPES.filter(other => other !== type)) {
       const r = setup(), [p, enemy] = r.players;
@@ -303,8 +296,7 @@ test('modificadores dos heróis afetam dano real: +25%, -20% e três oponentes n
       target.cd = 100;
       const before = target.hp;
       step(r);
-      const multiplier = HEROES[type].strongAgainst === targetType ? 1.25 : HEROES[type].weakAgainst === targetType ? .8 : 1;
-      assert.ok(Math.abs((before - target.hp) - entityStats(attacker).damage * multiplier) < 1e-9);
+      assert.ok(Math.abs((before - target.hp) - entityStats(attacker).damage) < 1e-9);
     }
   }
 });

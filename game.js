@@ -4,10 +4,11 @@ import {botTurn} from './ai.js';
 import {initializeCamps,updateCamps} from './camps.js';
 import {registerHeroChoice} from './public/hero-roster.js';
 import {planRecruitment} from './public/recruitment.js';
-import {createRoom,addCommander,configureMatch,beginMatch,snapshotFor,canSee,updateVictory} from './match.js';
+import {createRoom,addCommander,configureMatch,beginMatch,snapshotFor,canSee,updateVictory,recordExploration} from './match.js';
 import {FACTIONS} from './public/legends.js';
 import {BOSS_RESET} from './public/camp-config.js';
-import {initializeHero,damageEntity,castAbility,buyItem,useItem,startResearch,startTroopUpgrade,tickPowers,rewardDefeated,emitSpell} from './powers.js';
+import {initializeHero,damageEntity,healEntity,castAbility,castExclusive,buyItem,useItem,startResearch,startTroopUpgrade,tickPowers,rewardDefeated,emitSpell,powerCanAct,cancelPreparation,beforeBasicAttack} from './powers.js';
+import {tickLoot,pickupDrop,useDrop,cancelLootPreparation,markLootAction,hiddenByFog} from './loot.js';
 import {
   WORLD, COST, STATS, HERO_TYPES, MAX_LEVEL, CONSTRUCTION_DURATION, entityStats, heroMultiplier,
   upgradeCost, upgradeDuration, trainDuration, placementError, allied
@@ -78,7 +79,7 @@ export function spawn(r, p, type, x, y) {
   const e = {
     id: r.nextId++, owner: p.id, type,
     x: Math.max(15, Math.min(WORLD - 15, x)), y: Math.max(15, Math.min(WORLD - 15, y)),
-    level: STATS[type].building || STATS[type].hero || type === 'worker' ? 1 : p.troopLevel || 1, faction:p.faction||'mata',research:{...(p.research||{})},hp: STATS[type].hp, maxHp: STATS[type].hp,
+    level: STATS[type].building || STATS[type].hero || type === 'worker' ? 1 : p.troopLevel || 1, faction:p.faction||'fort',research:{...(p.research||{})},hp: STATS[type].hp, maxHp: STATS[type].hp,
     cd: 0, order: null, queue: [], progress: 0, upgrade: null, activity: {type:'idle'}
   };
   initializeHero(e,p);
@@ -140,16 +141,25 @@ function updateBuildOrder(r,worker,dt) {
 export function command(r, p, a) {
   if (r.phase !== 'playing' || p.defeated) throw Error('A partida não está ativa para você.');
   if (!a || typeof a !== 'object') throw Error('Ordem inválida.');
-  if (!['surrender', 'train', 'build', 'upgrade', 'troopUpgrade', 'stop', 'move', 'attack', 'gather', 'repair', 'cast','buyItem','useItem','research','attackMove','rally'].includes(a.type)) throw Error('Tipo de ordem inválido.');
+  if (!['surrender', 'train', 'build', 'upgrade', 'troopUpgrade', 'stop', 'move', 'attack', 'gather', 'repair', 'cast','exclusive','pickupDrop','useDrop','buyItem','useItem','research','attackMove','rally'].includes(a.type)) throw Error('Tipo de ordem inválido.');
   if (a.type !== 'surrender' && (!Array.isArray(a.ids) || a.ids.length > 100 || !a.ids.every(Number.isSafeInteger))) throw Error('Seleção inválida.');
   if (['move','attackMove','rally'].includes(a.type) && !point(a)) throw Error('Destino inválido.');
   const own = r.entities.filter(e => e.owner === p.id && e.hp > 0 && Array.isArray(a.ids) && a.ids.includes(e.id));
   if (a.type === 'surrender') { defeat(r, p); return; }
 
-  if(['cast','buyItem','useItem','research','troopUpgrade','rally'].includes(a.type)){
+  if(a.type==='exclusive'){
+    const result=castExclusive(r,p,own,a);
+    const caster=own.find(e=>e.id===result?.entityId);
+    if(caster)markLootAction(r,caster);
+    return result;
+  }
+
+  if(['cast','pickupDrop','useDrop','buyItem','useItem','research','troopUpgrade','rally'].includes(a.type)){
     if(a.ids.length!==1||own.length!==1)throw Error('Selecione uma única entidade sua.');
     const e=own[0];
-    if(a.type==='cast')castAbility(r,p,e,a);
+    if(a.type==='cast'){castAbility(r,p,e,a);markLootAction(r,e);}
+    if(a.type==='pickupDrop')return pickupDrop(r,p,e,a);
+    if(a.type==='useDrop')return useDrop(r,p,e,a);
     if(a.type==='buyItem')buyItem(r,p,e,a);
     if(a.type==='useItem')useItem(r,p,e,a);
     if(a.type==='research')startResearch(r,p,e,a);
@@ -210,11 +220,11 @@ export function command(r, p, a) {
 
   for (const e of own) {
     if (STATS[e.type].building) continue;
-    if (a.type === 'stop') {e.order = null;e.activity={type:'idle'};}
-    if (a.type === 'move'||a.type==='attackMove') {e.order = {type:a.type, x: Math.max(20,Math.min(WORLD-20,a.x + (e.id % 3 - 1) * 16)), y: Math.max(20,Math.min(WORLD-20,a.y + (e.id % 2) * 16))};e.activity={type:'moving'};}
+    if (a.type === 'stop') {cancelPreparation(e,r);cancelLootPreparation(e);e.order = null;e.activity={type:'idle'};}
+    if (a.type === 'move'||a.type==='attackMove') {cancelPreparation(e,r);cancelLootPreparation(e);e.order = {type:a.type, x: Math.max(20,Math.min(WORLD-20,a.x + (e.id % 3 - 1) * 16)), y: Math.max(20,Math.min(WORLD-20,a.y + (e.id % 2) * 16))};e.activity={type:'moving'};}
     if (a.type === 'attack') {
       const t = r.entities.find(t => t.id === a.target && !allied(r,t.owner,p.id) && t.hp > 0);
-      if (t&&canSee(r,p.id,t)) {e.order = {type: 'attack', target: t.id};e.activity={type:'moving',target:t.id};}
+      if (t&&canSee(r,p.id,t)) {cancelPreparation(e,r);cancelLootPreparation(e);e.order = {type: 'attack', target: t.id};e.activity={type:'moving',target:t.id};}
     }
     if (a.type === 'gather' && e.type === 'worker') {
       const t = r.resources.find(t => t.id === a.target && t.amount > 0);
@@ -230,6 +240,7 @@ function defeat(r, p) {
 }
 
 function advance(r,e,target,dt,reach=0,details={},clearOrder=false){
+  if(!powerCanAct(r,e,'move')||e.lootPreparation){e.activity={type:e.preparation||e.lootPreparation?'casting':'rooted',...details};return 'rooted';}
   const status=walk(e,target,dt,r,reach);
   if(status==='arrived'){
     if(clearOrder)e.order=null;
@@ -245,7 +256,9 @@ export function step(r, dt = .1) {
   r.tick++;
   r.time += dt;r.navigationBudget=12;r.resourceSearchBudget=4;
   tickPowers(r,dt);
+  if(r.tick%10===0)for(const p of r.players)if(!p.defeated)recordExploration(r,p.id);
   r.combatEvents = r.combatEvents.filter(event => r.time - event.at <= EVENT_LIFETIME);
+  r.deathEvents = (r.deathEvents||[]).filter(event=>r.time-event.at<=1.5);
   if (r.tick % 20 === 0) for (const p of r.players.filter(p => p.bot && !p.defeated)) botTurn(r, p, {command});
   const hits = [];
   const repairers=new Map();
@@ -296,13 +309,14 @@ export function step(r, dt = .1) {
     }
     if(e.boss&&r.time<(e.dormantUntil||0)){e.activity={type:'dormant',reason:'O Colosso desperta às 7min30s.'};continue;}
     if(e.boss&&Number.isFinite(e.quakeAt)){e.activity={type:'casting'};continue;}
+    if(e.preparation||e.lootPreparation||!powerCanAct(r,e,'attack')&&!powerCanAct(r,e,'move')){e.activity={type:e.preparation||e.lootPreparation?'casting':'rooted'};continue;}
     const camp=e.owner==='neutral'?r.camps.find(c=>c.id===e.camp):null;
     if(camp&&e.returningHome){advance(r,e,camp,dt,35);continue;}
     if(camp&&distance(e,camp)>170){advance(r,e,camp,dt,35);continue;}
     if(e.type==='healer'){
       e.healCd=Math.max(0,(e.healCd||0)-dt);
       const wounded=r.entities.filter(t=>t.hp>0&&t.hp<t.maxHp&&!STATS[t.type].building&&allied(r,e.owner,t.owner)&&distance(e,t)<=150).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];
-      if(wounded){e.activity={type:'healing',target:wounded.id};if(e.healCd<=1e-9){wounded.hp=Math.min(wounded.maxHp,wounded.hp+s.heal);e.healCd=1.5;emitSpell(r,e,'healerPulse',wounded,{kind:'heal',radius:35,duration:.8,color:'#8af7d3'});}}
+      if(wounded&&powerCanAct(r,e,'cast')){e.activity={type:'healing',target:wounded.id};if(e.healCd<=1e-9){healEntity(r,e,wounded,s.heal);markLootAction(r,e);e.healCd=1.5;emitSpell(r,e,'healerPulse',wounded,{kind:'heal',radius:35,duration:.8,color:'#8af7d3'});}}
     }
     let target;
     if(e.order?.type==='build'&&e.type==='worker'){updateBuildOrder(r,e,dt);continue;}
@@ -332,7 +346,7 @@ export function step(r, dt = .1) {
     }
     if (e.order?.type === 'move') { advance(r,e,e.order,dt,0,{},true); continue; }
     if (e.order?.type === 'attack') {
-      target = r.entities.find(t => t.id === e.order.target && t.hp > 0 && !(t.boss&&r.time<(t.dormantUntil||0)) && !allied(r,t.owner,e.owner)&&(distance(e,t)<=s.sight||canSee(r,e.owner,t)));
+      target = r.entities.find(t => t.id === e.order.target && t.hp > 0 && !(t.boss&&r.time<(t.dormantUntil||0)) && !allied(r,t.owner,e.owner)&&canSee(r,e.owner,t));
       if (!target) e.order = null;
     }
     if (!target && s.damage) {
@@ -344,9 +358,9 @@ export function step(r, dt = .1) {
       const key=team??e.owner;
       if(!opponents.has(key))opponents.set(key,r.entities.filter(candidate=>candidate.owner!==e.owner&&(team===undefined||teams.get(candidate.owner)!==team)));
       for(const candidate of opponents.get(key)){
-        if(candidate.hp<=0||(candidate.boss&&r.time<(candidate.dormantUntil||0)))continue;
+        if(candidate.hp<=0||(candidate.boss&&r.time<(candidate.dormantUntil||0))||hiddenByFog(r,e.owner,candidate))continue;
         const dx=candidate.x-e.x,dy=candidate.y-e.y,d=dx*dx+dy*dy;
-        if(d<bestDistance){bestDistance=d;target=candidate;}
+        if(d<bestDistance&&(e.owner==='neutral'||canSee(r,e.owner,candidate))){bestDistance=d;target=candidate;}
       }
     }
     if(camp&&target&&distance(target,camp)>(e.boss?BOSS_RESET.engagementRadius:220))target=null;
@@ -355,6 +369,7 @@ export function step(r, dt = .1) {
     if (target && s.damage) {
       const reach = s.range + (STATS[target.type].building ? 28 : 0);
       if(s.minRange&&distance(e,target)<s.minRange){
+        if(!powerCanAct(r,e,'move')){e.activity={type:'rooted',target:target.id};continue;}
         const status=retreatFrom(e,target,dt,r,s.minRange);
         e.activity=status==='blocked'?{type:'blocked',target:target.id,reason:'Alvo próximo demais. Proteja a catapulta ou libere espaço para recuar.'}:status==='rooted'?{type:'rooted',target:target.id,reason:'Catapulta imobilizada e sem distância para disparar.'}:{type:'moving',target:target.id,reason:'Recuando para obter distância de disparo.'};
         continue;
@@ -362,7 +377,8 @@ export function step(r, dt = .1) {
       if(distance(e,target)>reach&&!s.building)advance(r,e,target,dt,reach,{target:target.id});
       if (distance(e, target) <= reach+1e-9) {
         e.activity={type:'attacking',target:target.id};
-        if (e.cd <= 1e-9) {
+        if (e.cd <= 1e-9&&powerCanAct(r,e,'attack')&&beforeBasicAttack(r,e,target)!==false) {
+          markLootAction(r,e);
           const damage = s.damage * heroMultiplier(e.type, target.type)*(s.siege&&STATS[target.type].building?(s.buildingDamageMultiplier||2):1);
 
           e.cd = s.cooldown;
@@ -379,8 +395,15 @@ export function step(r, dt = .1) {
   }
   r.combatEvents = r.combatEvents.slice(-512);
   for (const [target,damage,source,event] of hits){event.damage=damageEntity(r,source,target,damage);event.blocked=Math.max(0,damage-event.damage);}
+  tickLoot(r,dt);
   rewardDefeated(r);
   updateCamps(r,spawn);
+
+  for(const e of r.entities){
+    if(e.hp>0||e.deathEventEmitted)continue;
+    e.deathEventEmitted=true;r.nextDeathId=(r.nextDeathId||0)+1;
+    r.deathEvents.push({id:r.nextDeathId,at:r.time,owner:e.owner,kind:'death',visibleTo:e.deathVisibleTo||r.players.filter(p=>allied(r,p.id,e.owner)).map(p=>p.id),entity:{id:e.id,type:e.type,faction:e.faction,x:e.x,y:e.y,level:e.level},from:{x:e.x,y:e.y},to:{x:e.x,y:e.y},targetId:e.id});
+  }
 
   r.entities = r.entities.filter(e => e.hp > 0);
   for (const p of r.players) if (!p.defeated && !r.entities.some(e => e.owner === p.id && e.type === 'base')) defeat(r, p);

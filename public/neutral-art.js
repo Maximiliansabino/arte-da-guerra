@@ -1,4 +1,5 @@
 import {CAMP_TYPES} from './camp-config.js';
+import {isolateCanvas} from './tribe-art.js';
 
 const TAU = Math.PI * 2;
 export const NEUTRAL_ATLAS_URL = '/assets/mercenary-atlas-v07.png';
@@ -9,13 +10,26 @@ export const NEUTRAL_ART = {
   colossus: {cell:3, tier:'boss', size:158, foot:.89, shadow:42, color:'#ffd36e'}
 };
 let atlas = null, loaded = false;
+let cellCache = null;
+function prepareCells(){
+ if(!atlas||atlas.naturalWidth<=0||atlas.naturalWidth!==atlas.naturalHeight||atlas.naturalWidth%2!==0){loaded=false;return;}
+ const w=atlas.naturalWidth/2,h=atlas.naturalHeight/2;
+ const make=typeof OffscreenCanvas!=='undefined'?(w,h)=>new OffscreenCanvas(w,h):typeof document!=='undefined'?(w,h)=>{const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;return canvas;}:null;
+ if(make){try{cellCache=Array.from({length:4},(_,i)=>{const canvas=make(w,h),c=canvas.getContext('2d',{alpha:true});c.clearRect(0,0,w,h);c.globalCompositeOperation='source-over';c.globalAlpha=1;c.shadowBlur=0;c.drawImage(atlas,(i%2)*w,Math.floor(i/2)*h,w,h,0,0,w,h);return canvas;});}catch{cellCache=null;}}
+ loaded=true;
+}
 const motion = new Map();
 
 function ensureAtlas() {
   if (atlas || typeof Image === 'undefined') return;
   atlas = new Image();
-  atlas.onload = () => {loaded = atlas.naturalWidth > 0 && atlas.naturalHeight > 0;};
-  atlas.onerror = () => {loaded = false;};
+  atlas.onload = () => {
+    // A decoded frame is copied once into transparent, isolated cells. Never
+    // switch to a partially decoded sprite or reuse a canvas with opaque pixels.
+    if(typeof atlas.decode==='function')atlas.decode().then(prepareCells).catch(()=>{loaded=false;cellCache=null;});
+    else prepareCells();
+  };
+  atlas.onerror = () => {loaded = false;cellCache=null;};
   atlas.src = NEUTRAL_ATLAS_URL;
 }
 function ellipse(ctx,x,y,rx,ry,color) {
@@ -86,7 +100,7 @@ function fallback(ctx,e,config,bob) {
 }
 
 /** Draw original neutral art without controlling combat or revealing fog data. */
-export function drawNeutral(ctx,e,now=0,{reducedMotion=false}={}) {
+export function drawNeutral(ctx,e,now=0,{reducedMotion=false,opacity=1}={}) {
   const config=NEUTRAL_ART[e?.type];
   if(!config || !Number.isFinite(e.x) || !Number.isFinite(e.y)) return false;
   ensureAtlas();
@@ -95,8 +109,10 @@ export function drawNeutral(ctx,e,now=0,{reducedMotion=false}={}) {
     Math.sin(t/(e.type==='sentinel'?680:1100)+(e.id||0))*(e.type==='sentinel'?2:.45);
   const casting=e.quakeAt!=null, attacking=(e.cd||0)>.8;
   const pulse=reducedMotion?.5:.5+Math.sin(t/180)*.5;
-  ctx.save();ctx.lineWidth=1;ctx.lineJoin='round';
-  ellipse(ctx,e.x,e.y+12,config.shadow,config.shadow*.43,'#071b1490');
+  isolateCanvas(ctx,{alpha:opacity});
+  // The raster already contains a small contact shadow; do not add a second
+  // broad dark disk underneath it. The procedural loading silhouette needs one.
+  if(!loaded)ellipse(ctx,e.x,e.y+12,config.shadow*.8,config.shadow*.28,'rgba(8,15,24,.20)');
   if(e.type==='sentinel'||casting){
     ctx.save();ctx.globalAlpha=casting?.35+.25*pulse:.25;
     ctx.strokeStyle=config.color;ctx.lineWidth=casting?2.5:1.2;
@@ -107,7 +123,8 @@ export function drawNeutral(ctx,e,now=0,{reducedMotion=false}={}) {
     ctx.save();ctx.translate(e.x,e.y+12);
     if(attacking&&!reducedMotion)ctx.rotate(Math.sin(t/90)*.012);
     if(casting){ctx.shadowColor=config.color;ctx.shadowBlur=10+8*pulse;}
-    ctx.drawImage(atlas,(config.cell%2)*w,Math.floor(config.cell/2)*h,w,h,-size/2,-size*config.foot+bob,size,size);
+    if(cellCache?.[config.cell])ctx.drawImage(cellCache[config.cell],0,0,w,h,-size/2,-size*config.foot+bob,size,size);
+    else ctx.drawImage(atlas,(config.cell%2)*w,Math.floor(config.cell/2)*h,w,h,-size/2,-size*config.foot+bob,size,size);
     ctx.restore();
   }else fallback(ctx,e,config,bob);
   // Small lights remain distinct at the normal battlefield zoom.

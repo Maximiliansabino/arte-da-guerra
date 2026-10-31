@@ -2,6 +2,7 @@ import {getMap} from './public/terrain.js';
 import {CAMP_TYPES, RESPAWN_SECONDS, BOSS_SLAM, BOSS_AWAKENS_AT, BOSS_RESET} from './public/camp-config.js';
 import {STATS} from './public/rules.js';
 import {damageEntity, emitSpell} from './powers.js';
+import {rewardDrop} from './loot.js';
 
 const neutral = {id:'neutral', faction:null, troopLevel:1, research:{}};
 
@@ -64,7 +65,7 @@ function updateBoss(r, boss) {
     if (r.time + 1e-9 < boss.quakeAt) return;
     const center = {x:boss.quakeX, y:boss.quakeY};
     for (const target of hostileUnits) {
-      if (Math.hypot(target.x-center.x, target.y-center.y) <= BOSS_SLAM.radius) damageEntity(r, boss, target, BOSS_SLAM.damage);
+      if (Math.hypot(target.x-center.x, target.y-center.y) <= BOSS_SLAM.radius) damageEntity(r, boss, target, BOSS_SLAM.damage,{kind:'magic'});
     }
     emitSpell(r, boss, 'colossusSlam', center, {kind:'blast', radius:BOSS_SLAM.radius, duration:.8, color:'#ffd17a'});
     boss.quakeAt = null;
@@ -133,6 +134,7 @@ export function updateCamps(r, spawn) {
         guard.respawnAt = death + RESPAWN_SECONDS;
         guard.entityId = null;
         const killer = r.players.find(player => player.id === entity.lastHitOwner && !player.defeated);
+        rewardDrop(r,entity,killer);
         if (killer) {
           killer.gold += CAMP_TYPES[camp.tier].gold;
           camp.claimedBy = killer.id;

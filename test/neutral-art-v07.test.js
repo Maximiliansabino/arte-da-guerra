@@ -85,3 +85,12 @@ test('mercenários: carregamento, recortes distintos, movimento reduzido e falha
     if(original===undefined)delete globalThis.Image;else globalThis.Image=original;
   }
 });
+
+test('mercenários: atlas só entra depois do decode e cada célula usa cache transparente limpo',async()=>{
+ const savedImage=globalThis.Image,savedCanvas=globalThis.OffscreenCanvas,images=[],surfaces=[];let release;
+ class FakeImage{constructor(){this.naturalWidth=1254;this.naturalHeight=1254;images.push(this);}set src(v){this.url=v;}decode(){return new Promise(resolve=>{release=resolve;});}}
+ class TransparentCanvas{constructor(w,h){this.width=w;this.height=h;this.operations=[];surfaces.push(this);}getContext(kind,options){assert.equal(options.alpha,true);const ops=this.operations;return new Proxy({}, {get(t,k){return(...args)=>ops.push([k,...args]);},set(t,k,v){ops.push(['set',k,v]);return true;}});}}
+ globalThis.Image=FakeImage;globalThis.OffscreenCanvas=TransparentCanvas;
+ try{const art=await import('../public/neutral-art.js?decoded-v090');const e={id:9,type:'guardian',owner:'neutral',x:100,y:100,hp:100};const before=canvas();art.drawNeutral(before.ctx,e,0);images[0].onload();const pending=canvas();art.drawNeutral(pending.ctx,e,1);assert.equal(pending.calls.some(c=>c[0]==='drawImage'),false);release();await Promise.resolve();assert.equal(surfaces.length,4);for(const s of surfaces){assert.deepEqual(s.operations[0],['clearRect',0,0,627,627]);assert.equal(s.operations.filter(c=>c[0]==='drawImage').length,1);}const ready=canvas();art.drawNeutral(ready.ctx,e,2,{reducedMotion:true});const rendered=ready.calls.find(c=>c[0]==='drawImage');assert.equal(rendered[1],surfaces[0]);assert.deepEqual(rendered.slice(2,6),[0,0,627,627]);assert.equal(ready.stack.length,0);}
+ finally{if(savedImage===undefined)delete globalThis.Image;else globalThis.Image=savedImage;if(savedCanvas===undefined)delete globalThis.OffscreenCanvas;else globalThis.OffscreenCanvas=savedCanvas;}
+});

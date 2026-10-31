@@ -1,3 +1,5 @@
+import * as catalog from '../public/tribes-data.js';
+import {tooltipText} from '../public/tooltips.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -26,7 +28,7 @@ const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 class Element {
   constructor(tagName = 'div') {
     this.tagName = tagName.toUpperCase(); this.children = []; this.value = '';
-    this.className = ''; this.hidden = false; this.disabled = false; this.open = false;
+    this.dataset={}; this.attributes={}; this.className = ''; this.hidden = false; this.disabled = false; this.open = false;
     this.style = {setProperty(name, value) {this[name] = value;}};
     this.classList = {
       contains: name => this.className.split(/\s+/).includes(name),
@@ -44,7 +46,10 @@ class Element {
   append(...elements) {this.children.push(...elements);}
   replaceChildren(...elements) {this.text = ''; this.children = [...elements];}
   getBoundingClientRect() {return {left: 0, top: 0, width: 1000, height: 600};}
-  setAttribute(name,value) {this[name]=value;}
+  setAttribute(name,value) {this.attributes[name]=String(value);this[name]=value;if(name==='aria-disabled')this.disabled=value==='true';}
+  getAttribute(name){return this.attributes[name];}
+  get title(){return this.dataset.tooltip || this._title || '';}
+  set title(value){this._title=value;}
   focus() {}
   setPointerCapture() {}
   showModal() {this.open = true;}
@@ -56,8 +61,8 @@ function entity(id, type, owner = 'p1', x = 400, y = 220) {
 }
 function fixture() {
   return {code: 'test-room', mode:'ffa', phase: 'playing', tick: 10, time: 1, combatEvents: [], spellEvents: [], resources: [], players: [
-    {id: 'p1', slot: 0, team:0, faction:'mata', research:{weapons:0,armor:0,harvest:0}, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
-    {id: 'p2', slot: 1, team:1, faction:'mares', research:{weapons:0,armor:0,harvest:0}, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
+    {id: 'p1', slot: 0, team:0, faction:'forj', research:{weapons:0,armor:0,harvest:0}, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
+    {id: 'p2', slot: 1, team:1, faction:'vent', research:{weapons:0,armor:0,harvest:0}, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
   ], entities: [entity(1, 'base', 'p1', 220, 220), entity(2, 'hall'),
     entity(3, 'worker', 'p1', 300, 350), entity(4, 'base', 'p2', 1580, 1580)]};
 }
@@ -76,7 +81,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), NEUTRAL_ART, drawMercenary:()=>false, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
+    ...catalog, tooltipText, initTooltips:()=>({}), heroPortrait:()=>new Element('canvas'), ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), NEUTRAL_ART, drawMercenary:()=>false, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
     TextDecoder, AbortController, console,
@@ -119,8 +124,8 @@ test('v0.8.1: os seis heróis ficam na categoria Recrutar e evoluções em aba p
  h.elements.get('#action-tabs').children.find(b=>b.textContent==='Recrutar').onclick();assert.ok(cards.every(b=>!b.hidden));
 });
 
-test('v0.8.1: habilidades permanecem visíveis no bonde, R bloqueia abaixo do nível5 e inventário continua acessível', async()=>{
- const h=harness();h.initial.entities.push(entity(20,'bastion'),entity(21,'soldier'));h.run('selected=new Set([20,21]);refreshActions()');
+test('v0.8.1: habilidades permanecem visíveis no grupo, R bloqueia abaixo do nível5 e inventário continua acessível', async()=>{
+ const h=harness();h.initial.entities.push(entity(20,'forj_03'),entity(21,'soldier'));h.run('selected=new Set([20,21]);refreshActions()');
  const hero=h.initial.entities.find(e=>e.id===20);hero.heroLevel=4;h.run('refreshActions()');
  const ultimate=()=>h.actions().find(b=>b.classList.contains('ultimate-action'));
  assert.equal(ultimate().hidden,false);assert.equal(ultimate().disabled,true);assert.match(ultimate().textContent,/Requer nível 5/);
@@ -129,7 +134,7 @@ test('v0.8.1: habilidades permanecem visíveis no bonde, R bloqueia abaixo do n�
  assert.ok(h.actions().filter(b=>b.classList.contains('inventory-action')).every(b=>!b.hidden));
  hero.heroLevel=5;h.run('refreshActions()');
  h.elements.get('#action-tabs').children.find(b=>b.textContent==='Habilidades').onclick();
- assert.equal(ultimate().disabled,false);press(h,'r');assert.equal(h.run('spellTarget.ability'),'forest');
+ assert.equal(ultimate().disabled,false);press(h,'r');assert.equal(h.run('spellTarget.ability'),'forj_03_r');
  assert.deepEqual(selectedIds(h),[20,21]);
 });
 
@@ -137,7 +142,7 @@ test('v0.8.1: filas de múltiplos quartéis são navegáveis e mantêm progresso
  const h=harness(),[first,second]=barracks(h,[1,2]);first.queue=['soldier','soldier'];first.progress=3;second.queue=['archer'];second.progress=2;h.run('refreshActions()');
  let list=h.elements.get('#production-list');assert.equal(list.children.length,2);assert.match(list.children[1].textContent,/Em espera/);
  const next=h.elements.get('#production-nav').children[1];h.run('refreshActions()');assert.equal(h.elements.get('#production-nav').children[1],next);
- next.onclick();assert.match(h.elements.get('#production-title').textContent,/#11/);list=h.elements.get('#production-list');assert.match(list.children[0].textContent,/Arqueiro/);
+ next.onclick();assert.match(h.elements.get('#production-title').textContent,/#11/);list=h.elements.get('#production-list');assert.match(list.children[0].textContent,/Atirador de Rebites/);
  const previous=h.elements.get('#production-nav').children[0];previous.onclick();assert.match(h.elements.get('#production-title').textContent,/#10/);assert.equal(h.elements.get('#production-list').children.length,2);
 });
 
@@ -162,7 +167,7 @@ test('v0.8.1: trabalhador informa deslocamento e falha de construção sem escon
 
 test('v0.8.1: despertar público do Colosso e painel de atributos não deixam atalhos escapar',()=>{
  const h=harness();h.initial.time=420;assert.match(h.run("campStatus({boss:true,awakensAt:450,visible:false})"),/0:30/);
- h.initial.entities.push(entity(20,'bastion'));h.select(20);h.elements.get('#selection-inspect').onclick();assert.equal(h.elements.get('#selection-info').open,true);
+ h.initial.entities.push(entity(20,'forj_03'));h.select(20);h.elements.get('#selection-inspect').onclick();assert.equal(h.elements.get('#selection-info').open,true);
  const count=h.requests.length;press(h,'w');assert.equal(h.requests.length,count);
  h.elements.get('#selection-info-close').onclick();assert.equal(h.elements.get('#selection-info').open,false);
 });
@@ -175,4 +180,23 @@ test('v0.8.1: câmera respeita limites visíveis e centraliza eixos maiores que 
  assert.equal(camera(h).x,900);assert.ok(Math.abs(camera(h).y-750/.65/2)<1e-9);
  h.run('cw=1000;ch=600;zoom=1;camera={x:500,y:900};keys=new Set(["arrowleft"]);pointer=null');frame(h);assert.equal(camera(h).x,500);
  h.run('keys.clear();cw=1920;ch=1080;zoom=.35;camera={x:10,y:1790};clampCamera()');assert.deepEqual(camera(h),{x:900,y:900});
+});
+
+test('v0.9: cada tribo mostra só seus seis heróis e o exclusivo requer Oficina III',()=>{
+ for(const tribe of ['fort','forj','vent','puls']){const initial=fixture();initial.players[0].faction=tribe;const h=harness(initial);const cards=h.actions().filter(b=>b.classList.contains('hero-card'));assert.equal(cards.length,6);for(const id of rules.HERO_TYPES.filter(id=>id.startsWith(tribe+'_')))assert.ok(cards.some(b=>b.textContent.includes(rules.HEROES[id].name)));const workshop=entity(99,'workshop');initial.entities.push(workshop);h.select(99);let exclusive=h.actions().find(b=>b.classList.contains('recruit-action')&&b.textContent.includes(catalog.entityName(tribe+'_exclusive',tribe)));assert.ok(exclusive);assert.equal(exclusive.getAttribute('aria-disabled'),'true');assert.match(exclusive.dataset.tooltip,/nível 3|nível III/);workshop.level=3;h.run('refreshActions()');exclusive=h.actions().find(b=>b.classList.contains('recruit-action')&&b.textContent.includes(catalog.entityName(tribe+'_exclusive',tribe)));assert.equal(exclusive.getAttribute('aria-disabled'),'false');assert.match(exclusive.textContent,/17.5 s/);}
+});
+test('v0.9: alvo unitário é enviado por identidade, aliados errados não gastam comando',async()=>{
+ const h=harness(),hero=entity(20,'fort_01'),friend=entity(21,'soldier','p1',440,220),enemy=entity(22,'soldier','p2',470,220);h.initial.entities.push(hero,friend,enemy);h.run('selected=new Set([20,21]);refreshActions();camera={x:440,y:220};zoom=1');press(h,'q');assert.match(h.run('targetError({x:470,y:220})'),/aliada/);await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});assert.deepEqual(h.requests.at(-1).body,{ids:[20],type:'cast',ability:'fort_01_q',x:440,y:220,target:21});assert.deepEqual(Array.from(h.run('[...selected]')),[20,21]);
+});
+test('v0.9: tooltip da habilidade bloqueada mantém efeito, custo e requisito',()=>{
+ const h=harness();h.initial.entities.push(entity(20,'fort_01'));h.select(20);const r=h.actions().find(b=>b.classList.contains('ultimate-action'));assert.equal(r.getAttribute('aria-disabled'),'true');assert.match(r.dataset.tooltip,/redução de dano/);assert.match(r.dataset.tooltip,/nível 5|nível heroico 5/);assert.match(r.dataset.tooltip,/85 mana/);assert.match(r.dataset.tooltip,/Indisponível/);assert.equal(typeof r.onclick,'function');
+});
+test('v0.9: E ativa um grupo de exclusivos prontos sem disparar habilidade do herói',async()=>{
+ const h=harness();h.initial.entities.push(entity(20,'vent_exclusive'),entity(21,'vent_exclusive'),entity(22,'fort_01'));h.initial.entities.find(e=>e.id===21).exclusiveCooldown=8;h.run('selected=new Set([20,21,22]);refreshActions()');press(h,'e');await Promise.resolve();assert.deepEqual(h.requests.at(-1).body,{ids:[20],type:'exclusive'});assert.deepEqual(Array.from(h.run('[...selected]')),[20,21,22]);assert.equal(h.actions().filter(b=>b.classList.contains('skill-action')).length,3);
+});
+test('v0.9: item raro usa Alt4, mira própria e aceita sinalizador sobre área encoberta',async()=>{
+ const h=harness(),hero=entity(20,'fort_01');hero.specialItem='drop_signal';h.initial.entities.push(hero);h.initial.fog={cell:50,visible:[],explored:[]};h.run('selected=new Set([20]);refreshActions();camera={x:800,y:220};zoom=1');press(h,'4',{altKey:true});assert.equal(h.run('spellTarget.kind'),'drop');assert.equal(h.run('targetError({x:800,y:220})'),null);await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});assert.deepEqual(h.requests.at(-1).body,{ids:[20],type:'useDrop',x:800,y:220});
+});
+test('v0.9: coleta do drop aproxima e só então envia pickup; cancelar impede coleta pendente',async()=>{
+ const h=harness(),hero=entity(20,'fort_01');h.initial.entities.push(hero);h.initial.lootDrops=[{id:88,item:'drop_fog',owner:'p1',x:600,y:220,expiresAt:61}];h.select(20);await h.run('pickupLoot(state.lootDrops[0])');assert.equal(h.requests.at(-1).body.type,'move');assert.equal(h.run('pendingPickup.drop'),88);hero.x=580;h.run('updateUI()');await Promise.resolve();assert.deepEqual(h.requests.at(-1).body,{ids:[20],type:'pickupDrop',dropId:88});hero.x=400;await h.run('pickupLoot(state.lootDrops[0])');h.run("send({type:'stop',ids:[20]})");assert.equal(h.run('pendingPickup'),null);
 });
