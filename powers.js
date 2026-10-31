@@ -1,9 +1,10 @@
-import {ABILITIES, HERO_ABILITIES, ITEMS, RESEARCH, heroLevelFromXP, researchCost} from './public/legends.js';
-import {STATS, entityStats, heroMultiplier, allied, WORLD, structureDamageMultiplier, collectiveUpgradeCost, collectiveUpgradeDuration, collectiveUpgradeError, combatResearchError} from './public/rules.js';
-import {terrainBlocked, segmentClear} from './public/terrain.js';
+import {ITEMS, RESEARCH, heroLevelFromXP, researchCost} from './public/legends.js';
+import {STATS, entityStats, allied, structureDamageMultiplier, collectiveUpgradeCost, collectiveUpgradeDuration, collectiveUpgradeError, combatResearchError} from './public/rules.js';
+import {tickAbilitySystem,basicHitEffects,guardReduction} from './ability-engine.js';
+import {refreshEffects,activeEffect,removeStatuses,addStatus,addShield,consumeShield,healEntity} from './combat-status.js';
 import {canSee} from './match.js';
+export {castAbility,castExclusive,beforeBasicAttack,powerCanAct,cancelPreparation,powerReveals,addStatus,healEntity} from './ability-engine.js';
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-const validPoint=p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&p.x>=20&&p.y>=20&&p.x<=WORLD-20&&p.y<=WORLD-20;
 
 export function initializeHero(e,player) {
   if(!STATS[e.type].hero)return;
@@ -12,17 +13,30 @@ export function initializeHero(e,player) {
   e.heroLevel=heroLevelFromXP(e.xp);e.cooldowns={};e.inventory=[];
   e.maxMana=entityStats(e).maxMana;e.mana=e.maxMana;
 }
-export function damageEntity(r,source,target,amount) {
-  if(target.hp<=0||!Number.isFinite(amount)||amount<=0||allied(r,source.owner,target.owner))return 0;
+export function damageEntity(r,source,target,amount,options={}) {
+  const kind=options.kind||'basic';
+  if(!source||!target||target.hp<=0||!Number.isFinite(amount)||amount<=0||allied(r,source.owner,target.owner))return 0;
   if(target.boss&&(r.time<(target.dormantUntil||0)||target.returningHome)||source.boss&&(r.time<(source.dormantUntil||0)||source.returningHome))return 0;
-  // Static defenses cannot safely wear down the special objective from camp edges.
-  const bossDefense=target.boss&&STATS[source.type]?.building ? .25 : 1;
-  const adjusted=amount*bossDefense*structureDamageMultiplier(source,target)*(1-Math.min(.5,entityStats(target).armor||0));
-  const shield=target.shieldUntil>r.time?Math.min(target.shield||0,adjusted):0;
-  target.shield=Math.max(0,(target.shield||0)-shield);
-  const damage=adjusted-shield;
+  const building=STATS[target.type]?.building;
+  if(building&&options.structureFactor===0)return 0;
+  refreshEffects(r,target);
+  const stats=entityStats(target),bossDefense=(target.boss&&STATS[source.type]?.building) ? .25 : 1;
+  const fortification=building?(options.structureFactor!==undefined?(target.construct?1:options.structureFactor):structureDamageMultiplier(source,target)):1;
+  let reduction=stats.damageReduction||0;
+  const duel=activeEffect(r,target,'duel');if(duel?.targetId===source.id)reduction=Math.max(reduction,duel.value);
+  const parry=kind==='basic'?activeEffect(r,target,'parry'):null;
+  if(kind==='basic')reduction=Math.max(reduction,guardReduction(r,source,target));
+  if(parry){reduction=Math.max(reduction,parry.value);removeStatuses(r,target,x=>x===parry);addStatus(r,target,target,{id:parry.id,kind:'counter',value:parry.bonus,duration:4});}
+  const armor=Math.max(0,(stats.armor||0)-(stats.armorReduction||0));
+  const adjusted=amount*bossDefense*fortification*(1-Math.min(.4,armor+reduction));
+  const shield=consumeShield(r,target,adjusted),damage=adjusted-shield;
+  // Capture observers while the target is still alive and its concealment is
+  // intact. Death cleanup must not reveal a kill through unexplored fog.
+  if(damage>=target.hp)target.deathVisibleTo=r.players.filter(p=>allied(r,p.id,target.owner)||canSee(r,p.id,target)).map(p=>p.id);
   target.hp-=damage;
   if(damage>0){target.lastHitOwner=source.owner;target.lastHitId=source.id;if(target.hp<=0)target.diedAt=r.time;}
+  if(target.hp>0&&adjusted>0){const reserve=activeEffect(r,target,'reserve');if(reserve){removeStatuses(r,target,x=>x===reserve);addShield(r,reserve.source,target,reserve.value,3,reserve.id);addStatus(r,reserve.source,target,{id:reserve.id,kind:'speedBonus',value:.2,duration:3});}}
+  if(kind==='basic')basicHitEffects(r,source,target,damage);
   return damage;
 }
 export function emitSpell(r,e,ability,to,overrides={}) {
@@ -30,67 +44,28 @@ export function emitSpell(r,e,ability,to,overrides={}) {
   r.spellEvents.push({id:r.nextSpellId++,at:r.time,ability,owner:e.owner,from:{x:e.x,y:e.y},to:{x:to.x,y:to.y},...overrides});
   r.spellEvents=r.spellEvents.slice(-256);
 }
-function applyArea(r,e,skill,to) {
-  const power=skill.power*(1+.08*((e.heroLevel||1)-1));
-  for(const target of r.entities){
-    if(target.hp<=0||distance(target,to)>skill.radius)continue;
-    const friendly=allied(r,e.owner,target.owner);
-    if(skill.kind==='heal'||skill.kind==='healingZone'){
-      if(friendly&&!STATS[target.type].building)target.hp=Math.min(target.maxHp,target.hp+power);
-    }else if(skill.kind==='shield'){
-      if(friendly&&!STATS[target.type].building){target.shield=Math.max(target.shieldUntil>r.time?target.shield||0:0,power);target.shieldUntil=r.time+skill.duration;}
-    }else if(!friendly){
-      damageEntity(r,e,target,power*heroMultiplier(e.type,target.type));
-      if(!STATS[target.type].building&&!target.boss){
-        if(skill.kind==='root')target.rootUntil=Math.max(target.rootUntil||0,r.time+skill.duration);
-        if(skill.kind==='slow')target.slowUntil=Math.max(target.slowUntil||0,r.time+skill.duration);
-      }
-    }
-  }
-}
-export function castAbility(r,p,e,a) {
-  const skill=Object.hasOwn(ABILITIES,a.ability)?ABILITIES[a.ability]:null;
-  if(!STATS[e?.type]?.hero||!skill||skill.hero!==e.type)throw Error('Escolha uma habilidade do seu herói.');
-  if((e.heroLevel||1)<skill.requiredLevel)throw Error(`Esta habilidade exige nível heroico ${skill.requiredLevel}.`);
-  if((e.cooldowns?.[a.ability]||0)>1e-9)throw Error('Habilidade em recarga.');
-  if(e.mana<skill.mana)throw Error('Mana insuficiente.');
-  const to=skill.target==='self'?{x:e.x,y:e.y}:{x:a.x,y:a.y};
-  if(!validPoint(to)||distance(e,to)>skill.range+.01&&skill.target!=='self')throw Error('Destino de magia inválido ou fora de alcance.');
-  if(skill.target!=='self'&&!canSee(r,p.id,to))throw Error('Escolha um ponto visível para sua equipe.');
-  if(skill.kind==='blink'){
-    if(r.mapId&&(terrainBlocked(to.x,to.y,16,r.mapId)||!segmentClear(e,to,(x,y)=>terrainBlocked(x,y,10,r.mapId))))throw Error('O vento não atravessa obstáculos ou o rio.');
-    if(r.entities.some(b=>b.hp>0&&STATS[b.type].building&&distance(b,to)<55))throw Error('Destino ocupado por uma construção.');
-  }
-  e.mana-=skill.mana;e.cooldowns??={};e.cooldowns[a.ability]=skill.cooldown;
-  emitSpell(r,e,a.ability,to,{radius:skill.radius,duration:skill.duration,color:skill.color,kind:skill.kind});
-  if(skill.kind==='blink'){e.x=to.x;e.y=to.y;e.order=null;}
-  else if(skill.kind==='storm'||skill.kind==='healingZone'){
-    r.zones??=[];r.zones.push({ability:a.ability,source:{id:e.id,owner:e.owner,type:e.type,heroLevel:e.heroLevel},x:to.x,y:to.y,remaining:skill.duration,pulse:0});
-    if(r.zones.length>64)r.zones.shift();
-  }else applyArea(r,e,skill,to);
-}
 export function buyItem(r,p,e,a) {
   const item=Object.hasOwn(ITEMS,a.item)?ITEMS[a.item]:null;
   if(!STATS[e?.type]?.hero||!item)throw Error('Item ou herói inválido.');
-  if(!r.entities.some(b=>b.owner===p.id&&b.type==='hall'&&b.hp>0&&!b.construct&&!b.upgrade&&distance(e,b)<=180))throw Error('Aproxime seu herói de um Salão das Lendas pronto (180 passos).');
+  if(!r.entities.some(b=>b.owner===p.id&&b.type==='hall'&&b.hp>0&&!b.construct&&!b.upgrade&&distance(e,b)<=180))throw Error('Aproxime seu herói de um Salão de Heróis pronto (180 passos).');
   if(e.inventory.length>=3)throw Error('Inventário cheio: três espaços.');
-  if(item.kind==='passive'&&e.inventory.includes(a.item))throw Error('O talismã já está equipado.');
+  if(item.kind==='passive'&&e.inventory.includes(a.item))throw Error('O núcleo já está equipado.');
   if(p.gold<item.cost[0]||p.wood<item.cost[1])throw Error('Recursos insuficientes.');
   p.gold-=item.cost[0];p.wood-=item.cost[1];e.inventory.push(a.item);
 }
 export function useItem(r,p,e,a) {
   if(!STATS[e?.type]?.hero||!Number.isInteger(a.slot)||a.slot<0||a.slot>=e.inventory.length)throw Error('Espaço de inventário inválido.');
   const id=e.inventory[a.slot],item=ITEMS[id];
-  if(item.kind==='passive')throw Error('Este talismã funciona enquanto está equipado.');
+  if(item.kind==='passive')throw Error('Este núcleo funciona enquanto está equipado.');
   if(item.kind==='heal'&&e.hp>=e.maxHp||item.kind==='mana'&&e.mana>=e.maxMana)throw Error('O recurso já está completo.');
-  if(item.kind==='heal')e.hp=Math.min(e.maxHp,e.hp+item.power);
+  if(item.kind==='heal')healEntity(r,e,e,item.power);
   if(item.kind==='mana')e.mana=Math.min(e.maxMana,e.mana+item.power);
   e.inventory.splice(a.slot,1);
   emitSpell(r,e,id,e,{kind:item.kind==='heal'?'heal':'mana',color:item.kind==='heal'?'#8af7d3':'#9bbcff',radius:50,duration:1});
 }
 export function startResearch(r,p,e,a) {
   const research=Object.hasOwn(RESEARCH,a.research)?RESEARCH[a.research]:null;
-  if(e?.type!=='workshop'||e.owner!==p.id||e.hp<=0||e.construct||e.upgrade||e.queue.length||e.researchJob||e.troopUpgrade||!research)throw Error('Selecione uma Oficina Encantada pronta e livre.');
+  if(e?.type!=='workshop'||e.owner!==p.id||e.hp<=0||e.construct||e.upgrade||e.queue.length||e.researchJob||e.troopUpgrade||!research)throw Error('Selecione uma Oficina pronta e livre.');
   const prerequisite=combatResearchError(r,p.id,a.research);
   if(prerequisite)throw Error(prerequisite);
   const level=(p.research?.[a.research]||0)+1;
@@ -111,6 +86,7 @@ export function startTroopUpgrade(r,p,e) {
 }
 
 export function tickPowers(r,dt) {
+  tickAbilitySystem(r,dt);
   r.spellEvents=(r.spellEvents||[]).filter(event=>r.time-event.at<Math.max(1.2,event.duration+.5));
   for(const e of r.entities){
     if(e.hp<=0)continue;
@@ -145,14 +121,8 @@ export function tickPowers(r,dt) {
       }
     }
   }
-  for(const zone of r.zones||[]){
-    if(!r.players.some(p=>p.id===zone.source.owner&&!p.defeated)){zone.remaining=0;continue;}
-    zone.pulse-=dt;
-    if(zone.pulse<=1e-9&&zone.remaining>0){applyArea(r,zone.source,ABILITIES[zone.ability],zone);zone.pulse+=1;}
-    zone.remaining-=dt;
-  }
-  r.zones=(r.zones||[]).filter(zone=>zone.remaining>1e-9);
 }
+
 export function rewardDefeated(r) {
   for(const defeated of r.entities.filter(e=>e.hp<=0&&!e.xpAwarded)){
     defeated.xpAwarded=true;
@@ -180,6 +150,7 @@ export function experienceReward(entity) {
   if(STATS[entity.type]?.building)return 0;
   if(Number.isFinite(entity.xpReward))return Math.max(0,Math.floor(entity.xpReward));
   if(STATS[entity.type]?.hero)return 100+20*(Math.max(1,Math.min(5,entity.heroLevel||1))-1);
+  if(Number.isFinite(STATS[entity.type]?.xpReward))return STATS[entity.type].xpReward;
   return {worker:10,soldier:40,archer:45,healer:55,siege:80,guardian:60,sentinel:100,veteran:150,colossus:250}[entity.type]||0;
 }
 

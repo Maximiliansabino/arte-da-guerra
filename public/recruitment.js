@@ -1,11 +1,11 @@
-import {COST, HERO_TYPES, LABELS, trainingError} from './rules.js';
+import {COST, HERO_TYPES, STATS, LABELS, trainingError} from './rules.js';
 import {heroRecruitError} from './hero-roster.js';
 
 const TRAINERS = {worker:'base', soldier:'barracks', archer:'barracks', healer:'barracks', siege:'workshop'};
 export const RECRUITMENT_LIMITS = {queue:5, population:65};
 
 export function trainerFor(unit) {
-  return HERO_TYPES.includes(unit) ? 'hall' : Object.hasOwn(TRAINERS, unit) ? TRAINERS[unit] : null;
+  return HERO_TYPES.includes(unit) ? 'hall' : STATS[unit]?.exclusive ? 'workshop' : Object.hasOwn(TRAINERS, unit) ? TRAINERS[unit] : null;
 }
 
 /** Preview a complete order without changing funds, queues or hero choices.
@@ -25,7 +25,7 @@ export function planRecruitment(state, ownerId, ids, unit) {
   if (selected.some(e => !e || e.hp <= 0 || e.owner !== ownerId)) return fail('Selecione apenas construções suas que ainda estejam de pé.');
   if (selected.some(e => e.type !== plan.trainer)) return fail(`Selecione apenas construções do tipo ${LABELS[plan.trainer]} para esta unidade.`);
   const hero = HERO_TYPES.includes(unit);
-  if (hero && selected.length !== 1) return fail('Selecione um único Salão das Lendas para recrutar um herói.');
+  if (hero && selected.length !== 1) return fail('Selecione um único Salão de Heróis para recrutar um herói.');
   for (const building of selected) {
     const error = trainingError(state, ownerId, building, unit) ||
       ((building.queue || []).length >= RECRUITMENT_LIMITS.queue ? 'Fila completa (5 unidades).' : null);

@@ -1,3 +1,4 @@
+import {isolateCanvas} from './tribe-art.js';
 // Cosmetic effects consume server-confirmed hits; they never calculate damage.
 // Keeping coordinates on each event also lets a lethal hit finish its animation.
 const LIMIT = 512;
@@ -71,7 +72,7 @@ export class CombatEffects {
       const to = { x: event.to.x, y: event.to.y - 8 };
       const angle = Math.atan2(to.y - from.y, to.x - from.x);
       const progress = Math.min(1, age / timing.travel);
-      ctx.save();
+      isolateCanvas(ctx);
       ctx.lineCap = 'round';
 
       if (age < timing.travel) {
@@ -130,7 +131,7 @@ export class CombatEffects {
 
       if (age >= timing.travel) {
         const impact = (age - timing.travel) / (timing.life - timing.travel);
-        ctx.save();
+        isolateCanvas(ctx);
         ctx.globalAlpha = 1 - impact;
         ctx.strokeStyle = event.blocked ? '#b8d9f3' : color;
         ctx.fillStyle = '#fff0c9';

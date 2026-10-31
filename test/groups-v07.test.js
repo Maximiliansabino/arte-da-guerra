@@ -1,3 +1,5 @@
+import * as catalog from '../public/tribes-data.js';
+import {tooltipText} from '../public/tooltips.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -26,7 +28,7 @@ const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 class Element {
   constructor(tagName = 'div') {
     this.tagName = tagName.toUpperCase(); this.children = []; this.value = '';
-    this.className = ''; this.hidden = false; this.disabled = false; this.open = false;
+    this.dataset={}; this.attributes={}; this.className = ''; this.hidden = false; this.disabled = false; this.open = false;
     this.style = {setProperty(name, value) {this[name] = value;}};
     this.classList = {
       contains: name => this.className.split(/\s+/).includes(name),
@@ -44,7 +46,10 @@ class Element {
   append(...elements) {this.children.push(...elements);}
   replaceChildren(...elements) {this.text = ''; this.children = [...elements];}
   getBoundingClientRect() {return {left: 0, top: 0, width: 1000, height: 600};}
-  setAttribute(name,value) {this[name]=value;}
+  setAttribute(name,value) {this.attributes[name]=String(value);this[name]=value;if(name==='aria-disabled')this.disabled=value==='true';}
+  getAttribute(name){return this.attributes[name];}
+  get title(){return this.dataset.tooltip || this._title || '';}
+  set title(value){this._title=value;}
   focus() {}
   setPointerCapture() {}
   showModal() {this.open = true;}
@@ -56,8 +61,8 @@ function entity(id, type, owner = 'p1', x = 400, y = 220) {
 }
 function fixture() {
   return {code: 'test-room', mode:'ffa', phase: 'playing', tick: 10, time: 1, combatEvents: [], spellEvents: [], resources: [], players: [
-    {id: 'p1', slot: 0, team:0, faction:'mata', research:{weapons:0,armor:0,harvest:0}, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
-    {id: 'p2', slot: 1, team:1, faction:'mares', research:{weapons:0,armor:0,harvest:0}, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
+    {id: 'p1', slot: 0, team:0, faction:'forj', research:{weapons:0,armor:0,harvest:0}, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
+    {id: 'p2', slot: 1, team:1, faction:'vent', research:{weapons:0,armor:0,harvest:0}, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
   ], entities: [entity(1, 'base', 'p1', 220, 220), entity(2, 'hall'),
     entity(3, 'worker', 'p1', 300, 350), entity(4, 'base', 'p2', 1580, 1580)]};
 }
@@ -76,7 +81,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), NEUTRAL_ART, drawMercenary:()=>false, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
+    ...catalog, tooltipText, initTooltips:()=>({}), heroPortrait:()=>new Element('canvas'), ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), NEUTRAL_ART, drawMercenary:()=>false, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
     TextDecoder, AbortController, console,
@@ -102,36 +107,36 @@ const actionsWith=(h,name)=>h.actions().filter(button=>button.classList.contains
 const press=(h,key,extra={})=>{let prevented=false;h.sandbox.window.onkeydown({key,target:{tagName:'CANVAS'},preventDefault(){prevented=true;},...extra});return prevented;};
 const selectedIds=h=>Array.from(h.run('[...selected]')).sort((a,b)=>a-b);
 function army(h,count=12){
- const units=Array.from({length:count},(_,i)=>entity(20+i,i===count-1?'bastion':'soldier'));
+ const units=Array.from({length:count},(_,i)=>entity(20+i,i===count-1?'forj_03':'soldier'));
  h.initial.entities.push(...units);h.run(`selected=new Set(${JSON.stringify(units.map(e=>e.id))});refreshActions()`);return units;
 }
 
-test('bonde: seleção mista mostra QWR e lança só com o herói, preservando a tropa e suas ordens',async()=>{
+test('grupo: seleção mista mostra QWR e lança só com o herói, preservando a tropa e suas ordens',async()=>{
  const h=harness(),units=army(h),hero=units.at(-1),ids=units.map(e=>e.id);
  for(const soldier of units.slice(0,-1))soldier.order={type:'attackMove',x:800,y:500};
  assert.equal(actionsWith(h,'skill-action').length,3);
  assert.match(h.elements.get('#selection').textContent,/12 unidades/);
  assert.match(h.elements.get('#hero-status').textContent,/Mana 150/);
- assert.match(h.elements.get('#actions').textContent,/bonde continua selecionado/);
+ assert.match(h.elements.get('#actions').textContent,/grupo continua selecionado/);
  actionsWith(h,'skill-action')[1].onclick();await Promise.resolve();
- assert.deepEqual(h.requests.at(-1).body,{ids:[hero.id],type:'cast',ability:'bark',x:400,y:220});
+ assert.deepEqual(h.requests.at(-1).body,{ids:[hero.id],type:'cast',ability:'forj_03_w',x:400,y:220});
  assert.deepEqual(selectedIds(h),ids);
  assert.ok(units.slice(0,-1).every(e=>e.order.type==='attackMove'));
  press(h,'q');assert.equal(h.run('spellTarget.id'),hero.id);
  h.run('camera={x:500,y:220};zoom=1');
  await h.elements.get('#map').onpointerdown({button:0,clientX:500,clientY:300});
- assert.deepEqual(h.requests.at(-1).body,{ids:[hero.id],type:'cast',ability:'roots',x:500,y:220});
+ assert.deepEqual(h.requests.at(-1).body,{ids:[hero.id],type:'cast',ability:'forj_03_q',x:500,y:220});
  assert.deepEqual(selectedIds(h),ids);
- hero.cooldowns.roots=3;h.run('refreshActions()');assert.equal(actionsWith(h,'skill-action')[0].disabled,true);
+ hero.cooldowns.forj_03_q=3;h.run('refreshActions()');assert.equal(actionsWith(h,'skill-action')[0].disabled,true);
 });
 
-test('bonde: Tab e botões alternam duas lendas sem perder a seleção nem lançar pela lenda errada',async()=>{
- const h=harness();army(h,3);const hero2=entity(40,'ranger');h.initial.entities.push(hero2);
+test('grupo: Tab e botões alternam dois heróis sem perder a seleção nem lançar pelo herói errado',async()=>{
+ const h=harness();army(h,3);const hero2=entity(40,'forj_04');h.initial.entities.push(hero2);
  h.run('selected.add(40);refreshActions()');const ids=selectedIds(h);
  assert.equal(h.run('activeHeroId'),22);
  assert.equal(press(h,'Tab'),true);assert.equal(h.run('activeHeroId'),40);
  assert.deepEqual(selectedIds(h),ids);
- press(h,'q');assert.equal(h.run('spellTarget.ability'),'tide');assert.equal(h.run('spellTarget.id'),40);
+ press(h,'q');assert.equal(h.run('spellTarget.ability'),'forj_04_q');assert.equal(h.run('spellTarget.id'),40);
  const tabs=h.elements.get('#actions').children.find(e=>e.className==='hero-tabs');
  assert.equal(tabs.children.length,2);tabs.children[0].onclick();
  assert.equal(h.run('spellTarget'),null);assert.equal(h.run('activeHeroId'),22);
@@ -142,7 +147,7 @@ test('bonde: Tab e botões alternam duas lendas sem perder a seleção nem lanç
  assert.equal(press(h,'Tab'),false,'a tecla Tab normal continua navegando quando só há um herói');
 });
 
-test('bonde: Ctrl+1 e Ctrl+2 salvam grupos completos, números e barra recuperam sem consumir itens',()=>{
+test('grupo: Ctrl+1 e Ctrl+2 salvam grupos completos, números e barra recuperam sem consumir itens',()=>{
  const h=harness(),units=army(h),ids=units.map(e=>e.id);units.at(-1).inventory=['potion'];
  assert.equal(press(h,'1',{ctrlKey:true}),true);
  h.select(3);assert.equal(press(h,'2',{ctrlKey:true}),true);
@@ -154,17 +159,17 @@ test('bonde: Ctrl+1 e Ctrl+2 salvam grupos completos, números e barra recuperam
  h.select(1);press(h,'9',{metaKey:true});press(h,'1');press(h,'9');assert.deepEqual(selectedIds(h),[1]);
 });
 
-test('bonde: aceita mais de doze, remove mortos e inimigos e mantém seleção ao chamar um grupo vazio',()=>{
+test('grupo: aceita mais de doze, remove mortos e inimigos e mantém seleção ao chamar um grupo vazio',()=>{
  const h=harness(),units=army(h,20);const foe=entity(80,'soldier','p2'),dead=entity(81,'soldier');dead.hp=0;
  h.initial.entities.push(foe,dead);h.run('selected.add(80);selected.add(81)');press(h,'3',{ctrlKey:true});
  assert.equal(h.run("controlGroups.get('3').length"),20);
  units[0].hp=0;units[1].owner='p2';h.run('refreshActions()');
  press(h,'3');assert.equal(selectedIds(h).length,18);assert.ok(!selectedIds(h).includes(20)&&!selectedIds(h).includes(21));
  const before=selectedIds(h);press(h,'8');assert.deepEqual(selectedIds(h),before);
- h.run('selected.clear()');press(h,'3',{ctrlKey:true});assert.equal(h.run("controlGroups.get('3').length"),18,'seleção vazia não apaga um bonde por engano');
+ h.run('selected.clear()');press(h,'3',{ctrlKey:true});assert.equal(h.run("controlGroups.get('3').length"),18,'seleção vazia não apaga um grupo por engano');
 });
 
-test('bonde: grupos são locais à sala e atalhos respeitam digitação, ajuda, modificadores e fase',()=>{
+test('grupo: grupos são locais à sala e atalhos respeitam digitação, ajuda, modificadores e fase',()=>{
  const h=harness();army(h,2);press(h,'1',{ctrlKey:true});
  h.select(3);assert.equal(press(h,'1',{target:{tagName:'INPUT'},ctrlKey:true}),false);
  assert.equal(press(h,'1',{target:{tagName:'DIV',isContentEditable:true}}),false);
@@ -175,8 +180,8 @@ test('bonde: grupos são locais à sala e atalhos respeitam digitação, ajuda, 
  h.initial.code='another-room';h.run('updateUI()');assert.equal(h.run('controlGroups.size'),0);assert.deepEqual(selectedIds(h),[]);
 });
 
-test('bonde: Alt+1/2/3 usa inventário do herói ativo e número sozinho seleciona o grupo',async()=>{
- const h=harness();army(h,2);const hero2=entity(40,'ranger');hero2.inventory=['potion','mana'];hero2.hp-=50;hero2.mana-=30;
+test('grupo: Alt+1/2/3 usa inventário do herói ativo e número sozinho seleciona o grupo',async()=>{
+ const h=harness();army(h,2);const hero2=entity(40,'forj_04');hero2.inventory=['potion','mana'];hero2.hp-=50;hero2.mana-=30;
  h.initial.entities.push(hero2);h.run('selected.add(40);refreshActions()');press(h,'2',{ctrlKey:true});
  press(h,'Tab');assert.equal(h.run('activeHeroId'),40);
  assert.equal(press(h,'1',{altKey:true}),true);await Promise.resolve();
@@ -185,7 +190,7 @@ test('bonde: Alt+1/2/3 usa inventário do herói ativo e número sozinho selecio
  h.select(3);press(h,'2');assert.deepEqual(selectedIds(h),[20,21,40]);assert.equal(h.requests.length,1);
 });
 
-test('bonde: aviso de recurso esgotado entra no contador sem marcar coleta, caminhada ou imobilização como ociosas',()=>{
+test('grupo: aviso de recurso esgotado entra no contador sem marcar coleta, caminhada ou imobilização como ociosas',()=>{
  const h=harness(),worker=h.initial.entities.find(e=>e.type==='worker');
  worker.order={type:'gather',target:'gone',resourceType:'wood'};worker.activity={type:'blocked',reasonCode:'resource-unavailable',reason:'Não há outra árvore acessível por perto.'};
  h.run('updateIdleUnits()');assert.equal(h.elements.get('#idle-total').textContent,'1');

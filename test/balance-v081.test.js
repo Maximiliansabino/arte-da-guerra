@@ -18,14 +18,14 @@ function kill(r,source,target){damageEntity(r,source,target,1e6);rewardDefeated(
 function advance(r,seconds){for(let i=0;i<Math.ceil(seconds*10);i++)step(r,.1);}
 
 test('economia não recebe bônus militar; pesquisa tem retorno limitado e independente',()=>{
-  const worker={type:'worker',level:3,research:{harvest:2},faction:'mata'};
+  const worker={type:'worker',level:3,research:{harvest:2},faction:'fort'};
   assert.equal(entityStats(worker).gather,3);
   assert.equal(entityStats({...worker,level:1}).gather,3);
   assert.equal(entityStats({...worker,research:{}}).gather,2.5);
   assert.deepEqual(researchCost({research:{}},'harvest'),[100,80]);
   assert.deepEqual(researchCost({research:{harvest:1}},'harvest'),[150,120]);
   const {r,a}=setup();a.gold=1e5;a.wood=1e5;
-  const laborer=spawn(r,a,'worker',500,900),hero=spawn(r,a,'bastion',550,900),soldier=spawn(r,a,'soldier',600,900);
+  const laborer=spawn(r,a,'worker',500,900),hero=spawn(r,a,'fort_01',550,900),soldier=spawn(r,a,'soldier',600,900);
   const barracks=spawn(r,a,'barracks',500,1100);barracks.level=3;
   command(r,a,{type:'troopUpgrade',ids:[barracks.id]});
   tickPowers(r,35);
@@ -38,8 +38,8 @@ test('cada tipo derrotado tem recompensa própria e construção não dá experi
   for(const [type,xp] of Object.entries({worker:10,soldier:40,archer:45,healer:55,siege:80,guardian:60,sentinel:100,veteran:150,colossus:250,base:0,tower:0})){
     assert.equal(experienceReward({type}),xp,type);
   }
-  assert.equal(experienceReward({type:'bastion',heroLevel:1}),100);
-  assert.equal(experienceReward({type:'bastion',heroLevel:5}),180);
+  assert.equal(experienceReward({type:'fort_01',heroLevel:1}),100);
+  assert.equal(experienceReward({type:'fort_01',heroLevel:5}),180);
   assert.deepEqual(HERO_XP,[0,120,320,650,1200]);
 });
 
@@ -57,38 +57,45 @@ test('XP é dividida sem inflação, sem recompensa duplicada e sem premiar alia
   rewardDefeated(r);assert.equal(heroes[0].xp,42);
 });
 
-test('R de todas as lendas permanece bloqueada até nível 5 e então aceita a ordem real',()=>{
+test('R dos 24 heróis permanece bloqueada até nível 5 e então aceita a ordem real',()=>{
   for(const type of HERO_TYPES){
-    const {r,a}=setup(),hero=spawn(r,a,type,800,900),id=HERO_ABILITIES[type][2];
+    const {r,a,b}=setup();a.faction=type.split('_')[0];
+    const hero=spawn(r,a,type,800,900),enemy=spawn(r,b,'soldier',850,900),id=HERO_ABILITIES[type][2];
+    const skill=ABILITIES[id],target=skill.target==='self'||skill.targetTeam==='ally'?hero:enemy;
+    const order={type:'cast',ids:[hero.id],ability:id,target:target.id,x:target.x,y:target.y};
     hero.heroLevel=4;hero.xp=650;hero.mana=230;
     const mana=hero.mana;
     assert.equal(ABILITIES[id].requiredLevel,5);
-    assert.throws(()=>command(r,a,{type:'cast',ids:[hero.id],ability:id,x:hero.x,y:hero.y}),/nível heroico 5/);
+    assert.throws(()=>command(r,a,order),/nível heroico 5/);
     assert.equal(hero.mana,mana);assert.equal(hero.cooldowns[id],undefined);
     hero.heroLevel=5;hero.xp=1200;
-    command(r,a,{type:'cast',ids:[hero.id],ability:id,x:hero.x,y:hero.y});
+    command(r,a,order);
     assert.equal(hero.mana,mana-ABILITIES[id].mana);
     assert.ok(hero.cooldowns[id]>0);
   }
 });
 
 test('morte e recrutamento preservam a experiência do mesmo herói sem dar níveis ao segundo tipo',()=>{
-  const {r,a,b}=setup(),hero=spawn(r,a,'bastion',700,900),enemy=spawn(r,b,'soldier',800,900);
+  const {r,a,b}=setup(),hero=spawn(r,a,'fort_01',700,900),enemy=spawn(r,b,'soldier',800,900);
   hero.xp=1200;hero.heroLevel=5;
   kill(r,enemy,hero);r.entities=r.entities.filter(e=>e.hp>0);
-  const restored=spawn(r,a,'bastion',700,900),second=spawn(r,a,'ranger',700,1000);
+  const restored=spawn(r,a,'fort_01',700,900),second=spawn(r,a,'fort_03',700,1000);
   assert.equal(restored.heroLevel,5);assert.equal(restored.xp,1200);assert.equal(restored.maxHp,694);
   assert.equal(second.heroLevel,1);assert.equal(second.xp,0);
 });
 
 test('cura e escudo apoiam tropas, mas não acumulam proteção mágica nas construções',()=>{
   const {r,a}=setup(),tower=spawn(r,a,'tower',800,900),soldier=spawn(r,a,'soldier',850,900);
-  const iara=spawn(r,a,'ranger',850,950),curupira=spawn(r,a,'bastion',850,940);
+  const healer=spawn(r,a,'fort_05',850,950),protector=spawn(r,a,'fort_01',850,940);
   tower.hp-=200;soldier.hp-=100;
-  command(r,a,{type:'cast',ids:[iara.id],ability:'spring',x:850,y:900});
-  assert.equal(tower.hp,800);assert.equal(soldier.hp,soldier.maxHp);
-  command(r,a,{type:'cast',ids:[curupira.id],ability:'bark',x:curupira.x,y:curupira.y});
-  assert.equal(tower.shield,undefined);assert.ok(soldier.shield>0);
+  assert.throws(()=>command(r,a,{type:'cast',ids:[healer.id],ability:'fort_05_q',target:tower.id,x:tower.x,y:tower.y}));
+  command(r,a,{type:'cast',ids:[healer.id],ability:'fort_05_q',target:soldier.id,x:soldier.x,y:soldier.y});
+  r.time+=ABILITIES.fort_05_q.cast;tickPowers(r,ABILITIES.fort_05_q.cast);
+  assert.equal(tower.hp,800);assert.equal(soldier.hp,soldier.maxHp-25);
+  assert.throws(()=>command(r,a,{type:'cast',ids:[protector.id],ability:'fort_01_q',target:tower.id,x:tower.x,y:tower.y}));
+  command(r,a,{type:'cast',ids:[protector.id],ability:'fort_01_q',target:soldier.id,x:soldier.x,y:soldier.y});
+  r.time+=ABILITIES.fort_01_q.cast;tickPowers(r,ABILITIES.fort_01_q.cast);
+  assert.ok(!tower.shield);assert.ok(soldier.shield>0);assert.ok(soldier.shield<=soldier.maxHp*.25);
 });
 
 test('torre inicial resiste a dois soldados inclusive com treinamento e pesquisas máximos',()=>{
@@ -119,7 +126,7 @@ test('defesa exclusivamente estática continua vulnerável a catapultas de longo
 
 test('chefe adormecido até 7:30 não anda, não ataca e não concede dano ou recompensa',()=>{
   const {r,a}=setup({map:true}),camp=r.camps.find(c=>c.boss),boss=r.entities.find(e=>e.boss);
-  const hero=spawn(r,a,'ranger',boss.x-100,boss.y),hp=hero.hp,gold=a.gold,pos={x:boss.x,y:boss.y};
+  const hero=spawn(r,a,'fort_03',boss.x-100,boss.y),hp=hero.hp,gold=a.gold,pos={x:boss.x,y:boss.y};
   r.time=BOSS_AWAKENS_AT-1;
   assert.equal(camp.awakensAt,450);
   assert.equal(damageEntity(r,hero,boss,1e6),0);
@@ -133,7 +140,7 @@ test('chefe adormecido até 7:30 não anda, não ataca e não concede dano ou re
 
 test('chefe desperto paga uma vez e retorna 120 segundos após a morte sem novo atraso inicial',()=>{
   const {r,a}=setup({map:true}),camp=r.camps.find(c=>c.boss),boss=r.entities.find(e=>e.boss);
-  const hero=spawn(r,a,'ranger',boss.x-100,boss.y),gold=a.gold;
+  const hero=spawn(r,a,'fort_03',boss.x-100,boss.y),gold=a.gold;
   r.time=510;kill(r,hero,boss);updateCamps(r,spawn);
   assert.equal(a.heroLimit,2);assert.equal(a.gold,gold+CAMP_TYPES.boss.gold);assert.equal(hero.xp,250);
   assert.equal(camp.guards[0].respawnAt,510+RESPAWN_SECONDS);
@@ -146,8 +153,9 @@ test('chefe desperto paga uma vez e retorna 120 segundos após a morte sem novo 
 test('chefe resiste ao controle e recupera vida após abandonar a luta, sem desgaste por torres',()=>{
   const {r,a}=setup({map:true}),camp=r.camps.find(c=>c.boss),boss=r.entities.find(e=>e.boss);
   r.time=460;
-  const hero=spawn(r,a,'bastion',boss.x-100,boss.y),tower=spawn(r,a,'tower',boss.x-250,boss.y);
-  command(r,a,{type:'cast',ids:[hero.id],ability:'roots',x:boss.x,y:boss.y});
+  const hero=spawn(r,a,'fort_04',boss.x-100,boss.y),tower=spawn(r,a,'tower',boss.x-250,boss.y);
+  command(r,a,{type:'cast',ids:[hero.id],ability:'fort_04_q',x:boss.x,y:boss.y});
+  r.time+=ABILITIES.fort_04_q.cast;tickPowers(r,ABILITIES.fort_04_q.cast);
   assert.ok(!boss.rootUntil);assert.equal(damageEntity(r,tower,boss,100),20);
   boss.x=camp.x+200;updateCamps(r,spawn);
   assert.equal(boss.returningHome,true);assert.equal(damageEntity(r,hero,boss,100),0);
@@ -156,7 +164,7 @@ test('chefe resiste ao controle e recupera vida após abandonar a luta, sem desg
   assert.equal(boss.hp,boss.maxHp);assert.equal(boss.returningHome,false);
 });
 
-function bossBattle({soldiers,archers=0,healers=0,heroType='bastion',skills=true}){
+function bossBattle({soldiers,archers=0,healers=0,heroType='fort_01',skills=true,dodge=false}){
   const {r,a}=setup({map:true});
   r.mapId=null;r.resources=[];r.camps=r.camps.filter(c=>c.boss);
   r.entities=r.entities.filter(e=>e.type==='base'||e.boss);r.time=BOSS_AWAKENS_AT;
@@ -170,29 +178,43 @@ function bossBattle({soldiers,archers=0,healers=0,heroType='bastion',skills=true
   const hero=spawn(r,a,heroType,550,900);hero.heroLevel=5;hero.xp=1200;
   hero.hp=hero.maxHp=entityStats(hero).hp;hero.mana=230;army.push(hero);
   command(r,a,{type:'attack',ids:army.map(e=>e.id),target:boss.id});
+  let dodging=false,lastWarning=null;
   for(let i=0;i<1200&&boss.hp>0&&army.some(e=>e.hp>0);i++){
-    if(skills&&hero.hp>0)for(const id of HERO_ABILITIES[hero.type]){
+    if(dodge&&Number.isFinite(boss.quakeAt)&&boss.quakeAt!==lastWarning){
+      lastWarning=boss.quakeAt;dodging=true;
+      for(const unit of army.filter(e=>e.hp>0)){
+        const dx=unit.x-boss.quakeX,dy=unit.y-boss.quakeY,d=Math.hypot(dx,dy)||1;
+        if(d>170)continue;
+        command(r,a,{type:'move',ids:[unit.id],x:boss.quakeX+dx/d*210,y:boss.quakeY+dy/d*210});
+      }
+    }
+    if(dodging&&!Number.isFinite(boss.quakeAt)){
+      dodging=false;command(r,a,{type:'attack',ids:army.filter(e=>e.hp>0).map(e=>e.id),target:boss.id});
+    }
+    if(skills&&!dodging&&hero.hp>0)for(const id of HERO_ABILITIES[hero.type]){
       const skill=ABILITIES[id];
-      if(hero.mana<skill.mana||(hero.cooldowns[id]||0)>0)continue;
+      if(hero.preparation||hero.channeling||hero.lootPreparation||hero.mana<skill.mana||(hero.cooldowns[id]||0)>0)continue;
       let target=boss;
-      if(['heal','healingZone','shield'].includes(skill.kind))target=army.find(e=>e.hp>0&&e.hp<e.maxHp)||hero;
+      if(skill.targetTeam==='ally')target=army.filter(e=>e.hp>0&&Math.hypot(hero.x-e.x,hero.y-e.y)<=skill.range).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp||a.id-b.id)[0]||hero;
       if(skill.target==='self')target=hero;
       if(skill.target!=='self'&&Math.hypot(hero.x-target.x,hero.y-target.y)>skill.range)continue;
-      command(r,a,{type:'cast',ids:[hero.id],ability:id,x:target.x,y:target.y});
+      command(r,a,{type:'cast',ids:[hero.id],ability:id,target:target.id,x:target.x,y:target.y});
+      break;
     }
     step(r,.1);
   }
   return {boss,army,elapsed:r.time-BOSS_AWAKENS_AT};
 }
 
-test('chefe exige força preparada: pequeno ataque falha e exército misto com habilidades conquista a vaga',()=>{
+test('chefe exige força preparada: pequeno ataque falha; exército misto com habilidades e esquiva conquista a vaga',()=>{
   // Equal recorded deployment in open ground, tier II with first weapon/armor
-  // research. The hero uses ready skills; there is no dodge or enemy interference.
+  // research. The prepared force uses ready skills and reacts to the public
+  // quake warning with ordinary move/attack orders, without enemy interference.
   // These are encounter regressions, not a guarantee about full-match duration.
   const raid=bossBattle({soldiers:2});
   assert.ok(raid.boss.hp>STATS.colossus.hp*.6);assert.ok(raid.army.every(e=>e.hp<=0));
-  for(const heroType of ['bastion','ranger']){
-    const prepared=bossBattle({soldiers:6,archers:4,healers:2,heroType});
+  for(const heroType of ['fort_01','fort_05']){
+    const prepared=bossBattle({soldiers:6,archers:4,healers:2,heroType,dodge:true});
     assert.ok(prepared.boss.hp<=0,heroType);assert.ok(prepared.army.some(e=>e.hp>0));
     assert.ok(prepared.elapsed>=35&&prepared.elapsed<=85,`${heroType}: ${prepared.elapsed}s`);
   }

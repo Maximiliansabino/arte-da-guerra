@@ -8,7 +8,7 @@ function setup(mapId = null, x = 400, y = 400) {
   addPlayer(r, 'Rival'); start(r, p);
   r.entities = r.entities.filter(e => e.type === 'base');
   r.mapId = mapId; r.resources = [];
-  p.faction = 'mares'; p.gold = p.wood = 1000;
+  p.faction = 'puls'; p.gold = p.wood = 1000;
   const worker = spawn(r, p, 'worker', x, y);
   return {r,p,worker};
 }

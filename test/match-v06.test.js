@@ -126,13 +126,13 @@ test('visão: duas escolhas e liberação de herói do adversário permanecem pr
   const {room,host}=setup('duel',1);
   beginMatch(room,host,false,spawn);
   const enemy=room.players[1],home=startingPoint(room,host.slot),away=startingPoint(room,enemy.slot);
-  enemy.heroType='bastion';enemy.heroTypes=['bastion','shade'];enemy.heroLimit=2;
-  const first=spawn(room,enemy,'bastion',away.x,away.y),second=spawn(room,enemy,'shade',away.x,away.y);
+  enemy.heroType='fort_01';enemy.heroTypes=['fort_01','fort_02'];enemy.heroLimit=2;
+  const first=spawn(room,enemy,'fort_01',away.x,away.y),second=spawn(room,enemy,'fort_02',away.x,away.y);
   let seen=snapshotFor(room,host).players.find(p=>p.id===enemy.id);
   assert.equal(seen.heroType,null);assert.deepEqual(seen.heroTypes,[]);assert.equal(seen.heroLimit,null);
   second.x=home.x;second.y=home.y+140;room.tick++;
   seen=snapshotFor(room,host).players.find(p=>p.id===enemy.id);
-  assert.equal(seen.heroType,null);assert.deepEqual(seen.heroTypes,['shade']);assert.equal(seen.heroLimit,null);
+  assert.equal(seen.heroType,null);assert.deepEqual(seen.heroTypes,['fort_02']);assert.equal(seen.heroLimit,null);
   assert.ok(!snapshotFor(room,host).entities.some(e=>e.id===first.id));
 });
 
@@ -142,19 +142,20 @@ test('máquina: usa a segunda vaga liberada e repõe herói morto sem escolher u
   const state=room(),human=addPlayer(state,'Treino');
   configureLobby(state,human,{action:'mode',mode:'duel'});start(state,human);
   const bot=state.players.find(p=>p.bot),base=state.entities.find(e=>e.owner===bot.id&&e.type==='base');
-  const hall=spawn(state,bot,'hall',base.x-150,base.y-100),first=spawn(state,bot,'shade',base.x-80,base.y);
+  bot.faction='fort';
+  const hall=spawn(state,bot,'hall',base.x-150,base.y-100),first=spawn(state,bot,'fort_02',base.x-80,base.y);
   spawn(state,bot,'soldier',base.x-100,base.y+40);
-  bot.heroType='shade';bot.heroTypes=['shade'];bot.gold=10000;bot.wood=10000;state.time=120;
+  bot.heroType='fort_02';bot.heroTypes=['fort_02'];bot.gold=10000;bot.wood=10000;state.time=120;
   botTurn(state,bot,{command});assert.deepEqual(hall.queue,[]);
   bot.heroLimit=2;
   for(let i=0;i<5&&!hall.queue.length;i++){state.time+=2;botTurn(state,bot,{command});}
-  assert.equal(hall.queue.length,1);assert.notEqual(hall.queue[0],'shade');
+  assert.equal(hall.queue.length,1);assert.notEqual(hall.queue[0],'fort_02');
   assert.equal(bot.heroTypes.length,2);
   spawn(state,bot,hall.queue[0],base.x-100,base.y);hall.queue=[];
   state.time+=2;botTurn(state,bot,{command});assert.deepEqual(hall.queue,[],'dois vivos encerram o recrutamento');
   first.hp=0;
   for(let i=0;i<5&&!hall.queue.length;i++){state.time+=2;botTurn(state,bot,{command});}
-  assert.deepEqual(hall.queue,['shade']);assert.equal(bot.heroTypes.length,2);
+  assert.deepEqual(hall.queue,['fort_02']);assert.equal(bot.heroTypes.length,2);
 });
 
 test('máquina: base sudeste da lagoa produz herói e lança onda sem perder salões para o acampamento',async()=>{

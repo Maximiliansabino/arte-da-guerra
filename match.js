@@ -4,6 +4,8 @@ import {STATS, entityStats} from './public/rules.js';
 import {FACTIONS} from './public/legends.js';
 import {DEFAULT_MODE, MODES, FOG_CELL, FOG_COLS, FOG_ROWS} from './public/match-config.js';
 import {DEFAULT_DIFFICULTY, DIFFICULTIES} from './public/ai-config.js';
+import {hiddenByFog,extraVisionSources,lootCooldownsFor,lootAreasFor} from './loot.js';
+import {powerReveals} from './powers.js';
 
 const LEGACY_SPAWNS = [[220, 220], [1580, 1580], [1580, 220], [220, 1580]];
 const DUO_SPAWNS = [[220, 220], [220, 1580], [1580, 220], [1580, 1580]];
@@ -100,7 +102,7 @@ export function addCommander(r, name, bot = false) {
   const p = {
     id: randomUUID(), token: randomBytes(32).toString('hex'),
     name: String(name || 'Comandante').trim().slice(0, 24) || 'Comandante',
-    slot, team: prescribedTeam(r, slot), faction: bot ? Object.keys(FACTIONS)[slot % 4] : 'mata',
+    slot, team: prescribedTeam(r, slot), faction: bot ? Object.keys(FACTIONS)[slot % 4] : 'fort',
     gold: 300, wood: 200, bot: !!bot, defeated: false, heroType: null, heroTypes: [], heroLimit: 1, research: {}, troopLevel: 1
   };
   r.players.push(p);
@@ -115,7 +117,7 @@ export function configureMatch(r, p, a) {
   if (a.action === 'faction') {
     const slot = a.slot ?? p.slot;
     const target = r.players.find(member => member.slot === slot);
-    if (!target || (!host && target.id !== p.id) || !Object.hasOwn(FACTIONS, a.faction)) throw Error('Escolha uma ordem válida para seu comandante.');
+    if (!target || (!host && target.id !== p.id) || !Object.hasOwn(FACTIONS, a.faction)) throw Error('Escolha uma tribo válida para seu comandante.');
     target.faction = a.faction;
   } else {
     if (!host) throw Error('Só o anfitrião configura os times e o modo da sala.');
@@ -236,17 +238,20 @@ function visionSources(r, viewerId) {
     });
     cache.teams.set(key, sources);
   }
-  return cache.teams.get(key);
+  const spellSources=(r.visionAreas||[]).filter(area=>area.until>r.time&&alliedMatch(r,viewerId,area.owner)&&!r.players.find(p=>p.id===area.owner)?.defeated);
+  return [...cache.teams.get(key),...spellSources,...extraVisionSources(r,viewerId)];
 }
 function pointVisible(sources, point) {
-  return validPoint(point) && sources.some(source => source.entity.hp > 0 && distance(source, point) <= source.radius);
+  return validPoint(point) && sources.some(source => (!source.entity||source.entity.hp > 0) && distance(source, point) <= source.radius);
 }
 export function canSee(r, viewerId, target) {
   if (!validPoint(target)) return false;
-  if (!r.fogEnabled || r.phase === 'finished') return true;
-  if (!r.players.some(p => p.id === viewerId)) return false;
+  if(r.phase==='finished')return true;
   if (target.owner && alliedMatch(r, viewerId, target.owner)) return true;
-  return pointVisible(visionSources(r, viewerId), target);
+  if(hiddenByFog(r,viewerId,target))return false;
+  if (!r.fogEnabled) return true;
+  if (!r.players.some(p => p.id === viewerId)) return false;
+  return powerReveals(r,viewerId,target)||pointVisible(visionSources(r, viewerId), target);
 }
 function memoryFor(r, viewer) {
   let teams = memories.get(r);
@@ -256,8 +261,22 @@ function memoryFor(r, viewer) {
   if (!memory) {memory = {explored: new Set(), resources: new Map(), camps: new Map()}; teams.set(key, memory);}
   return memory;
 }
+export function canSeeOrExplored(r,viewerId,target){
+  if(!validPoint(target)||target.x<0||target.y<0||target.x>=1800||target.y>=1800)return false;
+  const viewer=r.players.find(p=>p.id===viewerId);
+  if(!viewer)return false;
+  if(!r.fogEnabled||canSee(r,viewerId,target))return true;
+  const memory=memoryFor(r,viewer);
+  makeFog(visionSources(r,viewerId),memory);
+  const cell=Math.floor(target.y/FOG_CELL)*FOG_COLS+Math.floor(target.x/FOG_CELL);
+  return memory.explored.has(cell);
+}
+export function recordExploration(r,viewerId){
+  const viewer=r.players.find(p=>p.id===viewerId);
+  if(viewer&&r.fogEnabled)makeFog(visionSources(r,viewerId),memoryFor(r,viewer));
+}
 function makeFog(sources, memory) {
-  sources = sources.filter(source => source.entity.hp > 0);
+  sources = sources.filter(source => !source.entity||source.entity.hp > 0);
   const signature = sources.map(source => `${source.x},${source.y},${source.radius}`).join(';');
   if (memory.fogSignature === signature) return memory.fog;
   const visible = new Set();
@@ -284,6 +303,8 @@ function visibleEvents(events, sources, visibleIds) {
     const copy = {...event, from: {...(fromVisible ? event.from : event.to)}, to: {...(toVisible ? event.to : event.from)}};
     if (!fromVisible || (event.attackerId && !visibleIds.has(event.attackerId))) {delete copy.attackerId; copy.owner = null;}
     if (!toVisible || (event.targetId && !visibleIds.has(event.targetId))) delete copy.targetId;
+    if(Array.isArray(copy.targetIds))copy.targetIds=copy.targetIds.filter(id=>visibleIds.has(id));
+    if(Array.isArray(copy.heals))copy.heals=copy.heals.filter(hit=>visibleIds.has(hit.targetId));
     result.push(copy);
   }
   return result;
@@ -292,16 +313,18 @@ function visibleEvents(events, sources, visibleIds) {
 export function snapshotFor(r, viewer) {
   const viewerId = typeof viewer === 'string' ? viewer : viewer?.id;
   const p = viewer ? r.players.find(member => member.id === viewerId) : null;
+  const revealPrivate=!viewer||r.phase==='lobby'||r.phase==='finished';
   const full = !viewer || r.phase === 'lobby' || r.phase === 'finished' || !r.fogEnabled;
   if (viewer && (!p || !r.players.some(member => member.id === p.id))) throw Error('Comandante inválido.');
   const sources = full ? [] : visionSources(r, p.id);
   const memory = full ? null : memoryFor(r, p);
-  const entities = full ? r.entities : r.entities.filter(e => alliedMatch(r, p.id, e.owner) || pointVisible(sources, e));
+  const conceal = !!p&&r.phase==='playing';
+  const entities = r.entities.filter(e => (!conceal||!hiddenByFog(r,p.id,e))&&(full||alliedMatch(r,p.id,e.owner)||powerReveals(r,p.id,e)||pointVisible(sources,e)));
   const visibleIds = new Set(entities.map(e => e.id));
   const players = r.players.map(({token, ...member}) => {
-    if (full || alliedMatch(r, p.id, member.id)) return member;
+    if (revealPrivate || alliedMatch(r, p.id, member.id)) return member;
     const visibleHeroes=entities.filter(e=>e.owner===member.id&&STATS[e.type]?.hero).map(e=>e.type);
-    return {...member, gold: null, wood: null, heroType: visibleHeroes.includes(member.heroType)?member.heroType:null, heroTypes: [...new Set(visibleHeroes)], heroLimit: null, heroProgress: {}, research: {}, researchQueue: null, troopLevel: null};
+    return {id:member.id,name:member.name,slot:member.slot,team:member.team,faction:member.faction,bot:member.bot,defeated:member.defeated,left:member.left,gold: null, wood: null, heroType: visibleHeroes.includes(member.heroType)?member.heroType:null, heroTypes: [...new Set(visibleHeroes)], heroLimit: null, heroProgress: {}, research: {}, researchQueue: null, troopLevel: null};
   });
   const resources = full ? r.resources : r.resources.map(resource => {
     if (pointVisible(sources, resource)) memory.resources.set(resource.id, resource.amount);
@@ -319,10 +342,28 @@ export function snapshotFor(r, viewer) {
   return {
     code: r.code, mode: r.mode || DEFAULT_MODE, difficulty: r.difficulty || DEFAULT_DIFFICULTY, botCount:r.botCount||0, resolvedBotCount:r.mode==='coop'?cooperativeBotCount(r):r.players.filter(member=>member.bot).length, maxPlayers: modeFor(r).maxPlayers, maxHumans: modeFor(r).maxHumans,
     phase: r.phase, tick: r.tick, time: r.time, winner: r.winner, winningTeam: r.winningTeam ?? null, winners: r.winners || [],
-    players, entities: full ? entities : entities.map(e => alliedMatch(r, p.id, e.owner) ? e : {...e, order: null, activity: null, rally: null, queue: [], progress: 0, inventory: [], cooldowns: {}, researchJob: null, troopUpgrade: null}),
+    players, entities: revealPrivate ? entities : entities.map(e => alliedMatch(r, p.id, e.owner) ? alliedEntity(e) : publicEntity(e)),
     mapId: r.mapId, startingPositions: r.startingPositions || [], camps, resources,
     combatEvents: full ? r.combatEvents : visibleEvents(r.combatEvents, sources, visibleIds),
-    spellEvents: full ? r.spellEvents || [] : visibleEvents(r.spellEvents, sources, visibleIds),
+    spellEvents: full ? (r.spellEvents || []).map(event=>({...event,...(Array.isArray(event.targetIds)?{targetIds:event.targetIds.filter(id=>visibleIds.has(id))}:{}),...(Array.isArray(event.heals)?{heals:event.heals.filter(hit=>visibleIds.has(hit.targetId))}:{})})) : visibleEvents(r.spellEvents, sources, visibleIds),
+    deathEvents:(r.deathEvents||[]).filter(event=>revealPrivate||event.visibleTo?.includes(p.id)).map(({visibleTo,...event})=>event),
+    lootDrops:(r.lootDrops||[]).filter(drop=>full||pointVisible(sources,drop)),
+    lootCooldowns:p?lootCooldownsFor(r,p.id):{},
+    lootAreas:p?lootAreasFor(r,p.id):[],
+    visionZones:sources.filter(source=>!source.entity).map(({x,y,radius})=>({x,y,radius})),
     fog: full ? null : makeFog(sources, memory)
   };
+}
+
+// Enemy snapshots expose appearance and observable combat state, never server
+// references to effect sources, private inventory, preparations or AI plans.
+function alliedEntity(e){
+  const {lastHitId,lastHitOwner,deathVisibleTo,...result}=e;
+  return {...result,powerEffects:(e.powerEffects||[]).map(({source,...effect})=>effect),shields:(e.shields||[]).map(({sourceId,...shield})=>shield)};
+}
+function publicEntity(e){
+  const result={};
+  for(const key of ['id','owner','type','x','y','level','faction','hp','maxHp','heroLevel','mana','maxMana','shield','shieldUntil','construct','constructDuration','rootUntil','stunUntil','silenceUntil','controlImmuneUntil','camp','campSlot','neutralTier','boss','dormantUntil','quakeAt','quakeX','quakeY','quakeRadius','returningHome'])if(e[key]!==undefined)result[key]=e[key];
+  result.modifiers=Object.fromEntries(Object.entries(e.modifiers||{}).filter(([,v])=>Number.isFinite(v)));
+  return {...result,xp:null,order:null,activity:null,rally:null,queue:[],progress:0,inventory:[],specialItem:null,preparation:null,lootPreparation:null,channeling:null,cooldowns:{},research:{},researchJob:null,troopUpgrade:null,powerEffects:[],shields:[]};
 }

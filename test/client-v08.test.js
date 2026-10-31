@@ -1,3 +1,5 @@
+import * as catalog from '../public/tribes-data.js';
+import {tooltipText} from '../public/tooltips.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -26,7 +28,7 @@ const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 class Element {
   constructor(tagName = 'div') {
     this.tagName = tagName.toUpperCase(); this.children = []; this.value = '';
-    this.className = ''; this.hidden = false; this.disabled = false; this.open = false;
+    this.dataset={}; this.attributes={}; this.className = ''; this.hidden = false; this.disabled = false; this.open = false;
     this.style = {setProperty(name, value) {this[name] = value;}};
     this.classList = {
       contains: name => this.className.split(/\s+/).includes(name),
@@ -44,7 +46,10 @@ class Element {
   append(...elements) {this.children.push(...elements);}
   replaceChildren(...elements) {this.text = ''; this.children = [...elements];}
   getBoundingClientRect() {return {left: 0, top: 0, width: 1000, height: 600};}
-  setAttribute(name,value) {this[name]=value;}
+  setAttribute(name,value) {this.attributes[name]=String(value);this[name]=value;if(name==='aria-disabled')this.disabled=value==='true';}
+  getAttribute(name){return this.attributes[name];}
+  get title(){return this.dataset.tooltip || this._title || '';}
+  set title(value){this._title=value;}
   focus() {}
   setPointerCapture() {}
   showModal() {this.open = true;}
@@ -56,8 +61,8 @@ function entity(id, type, owner = 'p1', x = 400, y = 220) {
 }
 function fixture() {
   return {code: 'test-room', mode:'ffa', phase: 'playing', tick: 10, time: 1, combatEvents: [], spellEvents: [], resources: [], players: [
-    {id: 'p1', slot: 0, team:0, faction:'mata', research:{weapons:0,armor:0,harvest:0}, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
-    {id: 'p2', slot: 1, team:1, faction:'mares', research:{weapons:0,armor:0,harvest:0}, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
+    {id: 'p1', slot: 0, team:0, faction:'forj', research:{weapons:0,armor:0,harvest:0}, name: 'Ana', gold: 5000, wood: 5000, heroType: null, defeated: false},
+    {id: 'p2', slot: 1, team:1, faction:'vent', research:{weapons:0,armor:0,harvest:0}, name: 'Bia', gold: 5000, wood: 5000, heroType: null, defeated: false}
   ], entities: [entity(1, 'base', 'p1', 220, 220), entity(2, 'hall'),
     entity(3, 'worker', 'p1', 300, 350), entity(4, 'base', 'p2', 1580, 1580)]};
 }
@@ -76,7 +81,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), NEUTRAL_ART, drawMercenary:()=>false, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
+    ...catalog, tooltipText, initTooltips:()=>({}), heroPortrait:()=>new Element('canvas'), ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), NEUTRAL_ART, drawMercenary:()=>false, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
     TextDecoder, AbortController, console,
@@ -109,8 +114,8 @@ function barracks(h,levels=[1,2,3]) {
 }
 
 test('v0.8: três quartéis compram três soldados num único pedido, com total e seleção preservada',async()=>{
- const h=harness();barracks(h);const button=recruitButton(h,'Soldado');
- assert.equal(button.disabled,false);assert.match(button.textContent,/Soldado × 3/);
+ const h=harness();barracks(h);const button=recruitButton(h,'Lanceiro de Cobre');
+ assert.equal(button.disabled,false);assert.match(button.textContent,/Lanceiro de Cobre × 3/);
  assert.match(button.textContent,/210.*75.*no total/);assert.match(button.textContent,/3\/3/);
  await button.onclick();
  assert.equal(h.requests.length,1);
@@ -122,10 +127,10 @@ test('v0.8: três quartéis compram três soldados num único pedido, com total 
 });
 
 test('v0.8: arqueiros usam somente quartéis II e III e explicam a construção ignorada',async()=>{
- const h=harness();barracks(h);const button=recruitButton(h,'Arqueiro');
- assert.equal(button.disabled,false);assert.match(button.textContent,/Arqueiro × 2/);
+ const h=harness();barracks(h);const button=recruitButton(h,'Atirador de Rebites');
+ assert.equal(button.disabled,false);assert.match(button.textContent,/Atirador de Rebites × 2/);
  assert.match(button.textContent,/170.*80.*no total/);assert.match(button.textContent,/2\/3/);
- assert.match(button.textContent,/Quartel #10:.*nível 2/);
+ assert.match(button.textContent,/Pátio de Combate #10:.*nível 2/);
  await button.onclick();assert.deepEqual(h.requests[0].body,{type:'train',ids:[11,12],unit:'archer'});
 });
 
@@ -133,35 +138,35 @@ test('v0.8: primeiro quartel bloqueado não impede os demais e cada motivo apare
  const h=harness(),buildings=barracks(h,[1,1,1,1]);
  buildings[0].construct=3;buildings[1].queue=Array(5).fill('soldier');
  buildings[2].troopUpgrade={level:2,duration:15,remaining:10};h.run('refreshActions()');
- const button=recruitButton(h,'Soldado');assert.equal(button.disabled,false);
- assert.match(button.textContent,/Soldado × 1/);assert.match(button.textContent,/1\/4/);
+ const button=recruitButton(h,'Lanceiro de Cobre');assert.equal(button.disabled,false);
+ assert.match(button.textContent,/Lanceiro de Cobre × 1/);assert.match(button.textContent,/1\/4/);
  assert.match(button.textContent,/#10:/);assert.match(button.textContent,/#11: Fila completa/);assert.match(button.textContent,/#12:/);
  await button.onclick();assert.deepEqual(h.requests[0].body,{type:'train',ids:[13],unit:'soldier'});
  buildings[3].upgrade={level:2,duration:10,remaining:5};h.run('refreshActions()');
- assert.equal(recruitButton(h,'Soldado').disabled,true);
+ assert.equal(recruitButton(h,'Lanceiro de Cobre').disabled,true);
 });
 
 test('v0.8: recursos precisam pagar todo o pedido e colheita não recria botões a cada incremento',async()=>{
  const h=harness();barracks(h);h.initial.players[0].gold=208;h.run('refreshActions()');
- const blocked=recruitButton(h,'Soldado');assert.equal(blocked.disabled,true);
+ const blocked=recruitButton(h,'Lanceiro de Cobre');assert.equal(blocked.disabled,true);
  assert.match(blocked.title,/pedido completo: 210/);
  h.initial.players[0].gold=209;h.run('refreshActions()');
- assert.equal(recruitButton(h,'Soldado'),blocked,'continua abaixo do custo total sem perder a identidade do botão');
+ assert.equal(recruitButton(h,'Lanceiro de Cobre'),blocked,'continua abaixo do custo total sem perder a identidade do botão');
  h.initial.players[0].gold=210;h.run('refreshActions()');
- const enabled=recruitButton(h,'Soldado');assert.notEqual(enabled,blocked);assert.equal(enabled.disabled,false);
- h.initial.players[0].gold=211;h.run('refreshActions()');assert.equal(recruitButton(h,'Soldado'),enabled);
- h.initial.players[0].wood=74;h.run('refreshActions()');assert.equal(recruitButton(h,'Soldado').disabled,true);
- const count=h.requests.length;await recruitButton(h,'Soldado').onclick();assert.equal(h.requests.length,count);
+ const enabled=recruitButton(h,'Lanceiro de Cobre');assert.notEqual(enabled,blocked);assert.equal(enabled.disabled,false);
+ h.initial.players[0].gold=211;h.run('refreshActions()');assert.equal(recruitButton(h,'Lanceiro de Cobre'),enabled);
+ h.initial.players[0].wood=74;h.run('refreshActions()');assert.equal(recruitButton(h,'Lanceiro de Cobre').disabled,true);
+ const count=h.requests.length;await recruitButton(h,'Lanceiro de Cobre').onclick();assert.equal(h.requests.length,count);
 });
 
 test('v0.8: limite populacional considera todos os recrutas do lote e todas as filas',()=>{
  const h=harness();barracks(h);const ownCount=h.initial.entities.filter(e=>e.owner==='p1').length;
  h.initial.entities.push(...Array.from({length:64-ownCount},(_,i)=>entity(100+i,'soldier')));
- h.run('refreshActions()');assert.equal(recruitButton(h,'Soldado').disabled,true);
- assert.match(recruitButton(h,'Soldado').title,/3 vagas/);
- h.initial.entities.splice(-2);h.run('refreshActions()');assert.equal(recruitButton(h,'Soldado').disabled,false);
+ h.run('refreshActions()');assert.equal(recruitButton(h,'Lanceiro de Cobre').disabled,true);
+ assert.match(recruitButton(h,'Lanceiro de Cobre').title,/3 vagas/);
+ h.initial.entities.splice(-2);h.run('refreshActions()');assert.equal(recruitButton(h,'Lanceiro de Cobre').disabled,false);
  h.initial.entities.find(e=>e.id===1).queue=['worker'];h.run('refreshActions()');
- assert.equal(recruitButton(h,'Soldado').disabled,true);
+ assert.equal(recruitButton(h,'Lanceiro de Cobre').disabled,true);
 });
 
 test('v0.8: painel conserva a ordem e o progresso separado de cada fila selecionada',()=>{
@@ -169,17 +174,17 @@ test('v0.8: painel conserva a ordem e o progresso separado de cada fila selecion
  first.queue=['soldier','soldier'];first.progress=2;second.queue=['archer','soldier'];second.progress=1;
  h.run('refreshActions()');const panel=h.elements.get('#production-panel');assert.equal(panel.hidden,false);
  const list=h.elements.get('#production-list'),nav=h.elements.get('#production-nav');assert.equal(list.children.length,2);
- assert.match(list.children[0].textContent,/1\..*Soldado.*Em produção/);
- assert.match(list.children[1].textContent,/2\..*Soldado.*Em espera/);
+ assert.match(list.children[0].textContent,/1\..*Lanceiro de Cobre.*Em produção/);
+ assert.match(list.children[1].textContent,/2\..*Lanceiro de Cobre.*Em espera/);
  const before=list.children[0].children[2].value;
  first.progress+=1;h.run('refreshActions()');assert.ok(list.children[0].children[2].value>before);
  assert.equal(list.children[1].children.length,2,'quem aguarda não exibe progresso de outra unidade');
  nav.children[1].onclick();
- assert.match(list.children[0].textContent,/1\..*Arqueiro.*Em produção/);
- assert.match(list.children[1].textContent,/2\..*Soldado.*Em espera/);
+ assert.match(list.children[0].textContent,/1\..*Atirador de Rebites.*Em produção/);
+ assert.match(list.children[1].textContent,/2\..*Lanceiro de Cobre.*Em espera/);
  nav.children[1].onclick();assert.equal(list.children.length,0);
  assert.equal(h.elements.get('#production-empty').hidden,false);
- nav.children[1].onclick();assert.match(list.children[0].textContent,/1\..*Soldado/);
+ nav.children[1].onclick();assert.match(list.children[0].textContent,/1\..*Lanceiro de Cobre/);
 });
 
 test('v0.8: múltiplos salões não duplicam heróis, salão individual mantém seis escolhas',()=>{
@@ -193,10 +198,10 @@ test('v0.8: WASD nunca move a câmera, inclusive W mantido antes de selecionar u
  const h=harness();h.run('selected.clear();refreshActions();camera={x:900,y:900};pointer=null;zoom=1');
  for(const key of ['w','a','s','d']){press(h,key);frame(h);assert.deepEqual(camera(h),{x:900,y:900});}
  assert.deepEqual(Array.from(h.run('[...keys]')),[]);
- h.initial.entities.push(entity(20,'soldier'),entity(21,'bastion'));h.run('selected=new Set([20,21]);refreshActions()');
+ h.initial.entities.push(entity(20,'soldier'),entity(21,'forj_03'));h.run('selected=new Set([20,21]);refreshActions()');
  frame(h);assert.deepEqual(camera(h),{x:900,y:900},'W anterior não reaparece na seleção do herói');
  assert.equal(press(h,'w'),true);await Promise.resolve();frame(h);
- assert.deepEqual(h.requests.at(-1).body,{type:'cast',ids:[21],ability:'bark',x:400,y:220});
+ assert.deepEqual(h.requests.at(-1).body,{type:'cast',ids:[21],ability:'forj_03_w',x:400,y:220});
  assert.deepEqual(selectedIds(h),[20,21]);assert.deepEqual(camera(h),{x:900,y:900});
  assert.equal(h.actions().filter(button=>button.classList.contains('skill-action')).length,3);
  press(h,'a');assert.equal(h.run('attackTarget'),true);frame(h);assert.deepEqual(camera(h),{x:900,y:900});
@@ -215,7 +220,7 @@ test('v0.8: setas, bordas, espaço e zoom continuam operando a câmera',()=>{
 });
 
 test('v0.8: guia e ajuda suspendem atalhos e câmera sem deixar setas presas ao fechar',async()=>{
- const h=harness();h.initial.entities.push(entity(20,'bastion'));h.select(20);
+ const h=harness();h.initial.entities.push(entity(20,'forj_03'));h.select(20);
  for(const id of ['#hero-guide','#instructions']){
   h.run('camera={x:900,y:900};zoom=1;pointer={x:0,y:0}');press(h,'ArrowRight');
   h.elements.get(id).open=true;frame(h);assert.deepEqual(camera(h),{x:900,y:900});

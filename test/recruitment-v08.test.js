@@ -125,11 +125,11 @@ test('heróis: vários salões não clonam a lenda nem consomem escolha e custo'
   const {r,p,buildings}=setup(2,'hall');p.heroLimit=2;
   for(const unit of HERO_TYPES)unchangedAfterReject(r,p,order(buildings,unit),/único Salão/);
   const funds=balances(p);
-  command(r,p,{type:'train',ids:[buildings[0].id,buildings[0].id],unit:'bastion'});
-  assert.deepEqual(buildings[0].queue,['bastion']);assert.deepEqual(p.heroTypes,['bastion']);
+  command(r,p,{type:'train',ids:[buildings[0].id,buildings[0].id],unit:'fort_01'});
+  assert.deepEqual(buildings[0].queue,['fort_01']);assert.deepEqual(p.heroTypes,['fort_01']);
   assert.deepEqual(balances(p),[funds[0]-220,funds[1]-140]);
-  unchangedAfterReject(r,p,order([buildings[1]],'bastion'),/já está vivo ou na fila/);
-  command(r,p,order([buildings[1]],'shade'));
-  assert.deepEqual(p.heroTypes,['bastion','shade']);
-  unchangedAfterReject(r,p,order([buildings[1]],'ranger'),/dois heróis/);
+  unchangedAfterReject(r,p,order([buildings[1]],'fort_01'),/já está vivo ou na fila/);
+  command(r,p,order([buildings[1]],'fort_02'));
+  assert.deepEqual(p.heroTypes,['fort_01','fort_02']);
+  unchangedAfterReject(r,p,order([buildings[1]],'fort_03'),/dois heróis/);
 });

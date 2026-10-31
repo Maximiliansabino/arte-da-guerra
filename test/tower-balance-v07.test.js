@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {room, addPlayer, start, spawn, command, step} from '../game.js';
-import {damageEntity} from '../powers.js';
+import {damageEntity,tickPowers} from '../powers.js';
 import {STATS, HERO_TYPES, COST, BUILD_RULES, entityStats} from '../public/rules.js';
 import {ABILITIES, HERO_ABILITIES} from '../public/legends.js';
 
@@ -15,19 +15,18 @@ function setup() {
 function castReadySkills(r, player, hero, target) {
   for(const id of HERO_ABILITIES[hero.type]) {
     const skill=ABILITIES[id];
-    if(skill.kind==='blink'||hero.heroLevel<skill.requiredLevel||hero.mana<skill.mana||(hero.cooldowns[id]||0)>0)continue;
+    if(hero.preparation||hero.channeling||hero.lootPreparation||hero.heroLevel<skill.requiredLevel||hero.mana<skill.mana||(hero.cooldowns[id]||0)>0)continue;
     let to=target;
-    if(['heal','healingZone','shield'].includes(skill.kind)) {
-      if(skill.kind==='shield'&&(hero.shield||0)>0)continue;
-      if(skill.kind!=='shield'&&hero.hp>=hero.maxHp)continue;
-      to=hero;
-    }
+    if(skill.targetTeam==='ally')to=hero;
     if(skill.target==='self')to=hero;
+    if(skill.target==='unit'&&STATS[to.type].building)continue;
+    if(skill.target==='point'&&skill.structureFactor===0&&skill.targetTeam==='enemy')continue;
     if(Math.hypot(hero.x-to.x,hero.y-to.y)>skill.range)continue;
-    command(r,player,{type:'cast',ids:[hero.id],ability:id,x:to.x,y:to.y});
+    command(r,player,{type:'cast',ids:[hero.id],ability:id,target:to.id,x:to.x,y:to.y});
+    break;
   }
 }
-function siegeTrial({hero='bastion',soldiers=2,archers=0,siege=0,towers=2,tier=1,skills=false}={}) {
+function siegeTrial({hero='fort_01',soldiers=2,archers=0,siege=0,towers=2,tier=1,skills=false}={}) {
   const {r,attacker,defender}=setup();attacker.troopLevel=tier;
   const defense=Array.from({length:towers},(_,i)=>spawn(r,defender,'tower',950+(i>1?100:0),850+(i%2)*105));
   for(const e of defense){e.level=tier;e.hp=e.maxHp=entityStats(e).hp;}
@@ -46,7 +45,7 @@ function siegeTrial({hero='bastion',soldiers=2,archers=0,siege=0,towers=2,tier=1
 test('fortificação reduz dano comum e magia, preservando armadura, escudo e combate entre unidades',()=>{
   const {r,attacker,defender}=setup();
   const source=spawn(r,attacker,'soldier',700,850),tower=spawn(r,defender,'tower',950,850);
-  tower.research.armor=2;tower.shield=20;tower.shieldUntil=10;
+  tower.research.armor=2;tower.shields=[{id:'fixture',sourceId:source.id,instanceId:1,amount:20,until:10}];
   const before=tower.hp;
   const expected=100*.5*.9-20;
   assert.ok(Math.abs(damageEntity(r,source,tower,100)-expected)<1e-9);
@@ -56,7 +55,7 @@ test('fortificação reduz dano comum e magia, preservando armadura, escudo e co
   const unit=spawn(r,defender,'soldier',950,1100);
   assert.equal(damageEntity(r,source,unit,100),100,'fortificação não altera o combate entre unidades');
   assert.equal(entityStats(unit).fortification,0);
-  const detachedSpell={id:999,owner:attacker.id,type:'ember',heroLevel:3};
+  const detachedSpell={id:999,owner:attacker.id,type:'fort_06',heroLevel:3};
   tower.research={};
   assert.equal(damageEntity(r,detachedSpell,tower,100),50,'fonte persistente também respeita a fortificação');
 });
@@ -70,24 +69,26 @@ test('obras incompletas permanecem vulneráveis e cerco ignora apenas a fortific
   tower.construct=0;tower.research.armor=2;
   assert.equal(entityStats(tower).fortification,.5);
   assert.equal(damageEntity(r,engine,tower,100),90,'cerco ainda respeita a pesquisa de armadura');
-  tower.shield=90;tower.shieldUntil=10;
+  tower.shields=[{id:'fixture',sourceId:engine.id,instanceId:1,amount:90,until:10}];
   assert.equal(damageEntity(r,engine,tower,100),0,'cerco não ignora escudos');
   assert.equal(tower.shield,0);
 });
 
 test('habilidade ofensiva real causa dano reduzido à estrutura pronta sem mudar dano às tropas',()=>{
   const {r,attacker,defender}=setup();
-  const hero=spawn(r,attacker,'ranger',800,850),tower=spawn(r,defender,'tower',950,850);
-  const unit=spawn(r,defender,'soldier',950,910),buildingHP=tower.hp,unitHP=unit.hp;
-  command(r,attacker,{type:'cast',ids:[hero.id],ability:'tide',x:tower.x,y:tower.y});
-  assert.ok(Math.abs(buildingHP-tower.hp-ABILITIES.tide.power*.5)<1e-9);
-  assert.equal(unitHP-unit.hp,ABILITIES.tide.power);
-  assert.ok(r.spellEvents.some(e=>e.ability==='tide'));
+  attacker.faction='vent';
+  const hero=spawn(r,attacker,'vent_01',800,850),tower=spawn(r,defender,'tower',880,850);
+  const unit=spawn(r,defender,'soldier',875,870),buildingHP=tower.hp,unitHP=unit.hp;
+  command(r,attacker,{type:'cast',ids:[hero.id],ability:'vent_01_q',x:tower.x,y:tower.y});
+  r.time+=ABILITIES.vent_01_q.cast;tickPowers(r,ABILITIES.vent_01_q.cast);
+  assert.ok(Math.abs(buildingHP-tower.hp-ABILITIES.vent_01_q.damage*.5)<1e-9);
+  assert.equal(unitHP-unit.hp,ABILITIES.vent_01_q.damage);
+  assert.ok(r.spellEvents.some(e=>e.ability==='vent_01_q'));
 });
 
-test('alcance defensivo cobre Iara no limite contra prédios e eventos informam o dano aplicado',()=>{
+test('alcance defensivo cobre o atirador no limite contra prédios e eventos informam o dano aplicado',()=>{
   const {r,attacker,defender}=setup();
-  const tower=spawn(r,defender,'tower',950,900),hero=spawn(r,attacker,'ranger',742,900);
+  const tower=spawn(r,defender,'tower',950,900),hero=spawn(r,attacker,'fort_03',742,900);
   const hp=tower.hp,heroHP=hero.hp;
   command(r,attacker,{type:'attack',ids:[hero.id],target:tower.id});
   step(r,.1);
@@ -118,11 +119,11 @@ test('uma torre isolada não substitui um exército e uma força maior rompe dua
     assert.ok(defense.every(e=>e.hp<=0));
     assert.ok(army.some(e=>e.hp>0));
   }
-  const raidGold=COST.soldier[0]*8+COST.bastion[0],defenseGold=COST.tower[0]*2;
+  const raidGold=COST.soldier[0]*8+COST.fort_01[0],defenseGold=COST.tower[0]*2;
   assert.ok(raidGold>defenseGold,'o rompimento envolve maior investimento ofensivo');
   for(const tier of [1,2,3]) {
     const {r,defense,army}=siegeTrial({soldiers:8,tier});
-    assert.ok(defense.every(e=>e.hp<=0),`oito soldados e Curupira rompem equipamento ${tier}`);
+    assert.ok(defense.every(e=>e.hp<=0),`oito soldados e Alda rompem equipamento ${tier}`);
     assert.ok(army.some(e=>e.hp>0));assert.ok(r.time<60);
   }
 });

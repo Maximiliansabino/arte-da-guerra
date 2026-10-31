@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {room,addPlayer,configureLobby,start,spawn,command,snapshot,step} from '../game.js';
 import {botTurn} from '../ai.js';
 import {DIFFICULTIES} from '../public/ai-config.js';
+import {tickPowers} from '../powers.js';
 
 function duel(difficulty='normal') {
   const r=room(),human=addPlayer(r,'Humano');
@@ -53,7 +54,7 @@ test('automático acompanha novos amigos e trocar de modo elimina configuração
 });
 
 test('XP guardado do adversário permanece oculto e horário público do chefe permanece legível',()=>{
-  const {r,human,bot}=duel();bot.heroProgress={shade:{xp:610,heroLevel:4}};
+  const {r,human,bot}=duel();bot.heroProgress={[`${bot.faction}_02`]:{xp:610,heroLevel:4}};
   r.camps=[{id:0,x:900,y:900,name:'Colosso',tier:'boss',boss:true,reward:300,alive:1,awakensAt:450,guards:[{entityId:99}],respawnAt:null}];
   const state=snapshot(r,human);
   assert.deepEqual(state.players.find(p=>p.id===bot.id).heroProgress,{});
@@ -99,18 +100,19 @@ test('fácil e normal lançam grupos completos após preparação, sem renda art
 
 test('normal não conjura todas as habilidades no mesmo turno e respeita a reação entre decisões',()=>{
   const {r,human,bot,stage}=duel();r.time=120;
-  const hero=spawn(r,bot,'storm',stage.x,stage.y);hero.heroLevel=5;hero.mana=230;hero.maxMana=230;
-  spawn(r,human,'soldier',stage.x-100,stage.y);
+  const hero=spawn(r,bot,`${bot.faction}_03`,stage.x,stage.y);hero.heroLevel=5;hero.mana=230;hero.maxMana=230;
+  for(let i=0;i<3;i++)spawn(r,human,'soldier',stage.x-100+i*5,stage.y);
+  spawn(r,bot,'soldier',stage.x+30,stage.y);
   const casts=[];
   const issue=(r,p,a)=>{const result=command(r,p,a);if(a.type==='cast')casts.push(a);return result;};
   botTurn(r,bot,{command:issue});assert.equal(casts.length,1);
-  r.time+=.5;botTurn(r,bot,{command:issue});assert.equal(casts.length,1);
-  r.time+=1.5;botTurn(r,bot,{command:issue});assert.equal(casts.length,2);
+  r.time+=.5;tickPowers(r,.5);botTurn(r,bot,{command:issue});assert.equal(casts.length,1);
+  r.time+=1.5;tickPowers(r,1.5);botTurn(r,bot,{command:issue});assert.equal(casts.length,2);
 });
 
 test('expedição de XP leva o herói ao acampamento conhecido e não consulta a vida oculta',()=>{
   const {r,bot,stage}=duel();r.time=130;
-  const hero=spawn(r,bot,'shade',stage.x,stage.y);
+  const hero=spawn(r,bot,`${bot.faction}_02`,stage.x,stage.y);
   while(r.entities.filter(e=>e.owner===bot.id&&e.type==='soldier').length<5)spawn(r,bot,'soldier',stage.x,stage.y);
   for(const e of r.entities.filter(e=>e.owner===bot.id&&!['base','worker'].includes(e.type))){e.x=stage.x;e.y=stage.y;e.order=null;}
   r.camps=[{id:0,x:1100,y:900,tier:'easy',boss:false,alive:0}];
@@ -122,7 +124,7 @@ test('expedição de XP leva o herói ao acampamento conhecido e não consulta a
 test('normal deixa a fila esvaziar para treinamento coletivo e preserva o investimento',()=>{
   const {r,bot,stage}=duel();r.time=360;
   const barracks=spawn(r,bot,'barracks',stage.x-100,stage.y-100);barracks.level=3;barracks.queue=['soldier'];
-  spawn(r,bot,'shade',stage.x,stage.y);
+  spawn(r,bot,`${bot.faction}_02`,stage.x,stage.y);
   while(r.entities.filter(e=>e.owner===bot.id&&e.type==='soldier').length<8)spawn(r,bot,'soldier',stage.x,stage.y);
   while(r.entities.filter(e=>e.owner===bot.id&&e.type==='worker').length<8)spawn(r,bot,'worker',stage.x,stage.y-80);
   bot.gold=500;bot.wood=350;
@@ -177,7 +179,7 @@ test('ofensiva usa travessia lateral pública e avança ao próximo ponto sem ir
 test('exército ferido no limite de planejamento pode recrutar apoio para não ficar parado para sempre',()=>{
   const {r,bot,stage}=duel();r.time=500;bot.troopLevel=3;
   const barracks=spawn(r,bot,'barracks',stage.x-100,stage.y-100);barracks.level=3;
-  spawn(r,bot,'shade',stage.x,stage.y);
+  spawn(r,bot,`${bot.faction}_02`,stage.x,stage.y);
   while(r.entities.filter(e=>e.owner===bot.id&&e.type==='soldier').length<24)spawn(r,bot,'soldier',stage.x,stage.y);
   while(r.entities.filter(e=>e.owner===bot.id&&e.type==='worker').length<8)spawn(r,bot,'worker',stage.x,stage.y-80);
   for(const soldier of r.entities.filter(e=>e.owner===bot.id&&e.type==='soldier'))soldier.hp=50;
@@ -223,7 +225,7 @@ test('catapulta escolhe torre visível ao alcance durante ofensiva, sem persegui
 test('herói da AI retorna pelo canto da ponte respeitando a caminhada e o destino de reunião',()=>{
   const {r,human,bot,base}=duel();r.mapId='three-bridges';r.time=500;base.x=220;base.y=220;
   for(const enemy of r.entities.filter(e=>e.owner===human.id)){enemy.x+=1200;enemy.y+=1000;}
-  r.nextId=91;const hero=spawn(r,bot,'ember',975,365);hero.hp=160;
+  r.nextId=91;const hero=spawn(r,bot,`${bot.faction}_05`,975,365);hero.hp=160;
   command(r,bot,{type:'move',ids:[hero.id],x:405,y:220});
   step(r,.1);
   const original={x:hero.x,y:hero.y};botTurn(r,bot,{command});

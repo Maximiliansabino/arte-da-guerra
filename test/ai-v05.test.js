@@ -83,8 +83,8 @@ test('uma ofensiva prolongada recebe reforços em outra formação completa, nun
 test('máquina deixa a fila esvaziar para evoluir o quartel, sem gastar tudo em soldados', () => {
   const {r, bot, stage, army} = fixture('normal', 4);
   const barracks = spawn(r, bot, 'barracks', stage.x - 100, stage.y - 100);
-  spawn(r, bot, 'shade', stage.x, stage.y);
-  bot.heroType = 'shade'; bot.gold = 1000; bot.wood = 1000;
+  spawn(r, bot, `${bot.faction}_02`, stage.x, stage.y);
+  bot.heroType = `${bot.faction}_02`; bot.gold = 1000; bot.wood = 1000;
   barracks.queue = ['soldier'];
   botTurn(r, bot, {command});
   assert.deepEqual(barracks.queue, ['soldier'], 'não acrescenta outro soldado à fila que deve esvaziar');

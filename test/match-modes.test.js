@@ -82,9 +82,9 @@ test('salão preserva identidade, valida anfitrião/modo/facção e não remove 
   assert.throws(() => configureMatch(r, friend, {action: 'mode', mode: 'coop'}));
   assert.throws(() => configureMatch(r, p, {action: 'mode', mode: 'duel'}));
   assert.equal(r.mode, 'ffa'); assert.equal(r.players.length, 2);
-  configureMatch(r, friend, {action: 'faction', faction: 'astros', slot: friend.slot});
-  assert.equal(friend.faction, 'astros');
-  assert.throws(() => configureMatch(r, friend, {action: 'faction', faction: 'brasas', slot: p.slot}));
+  configureMatch(r, friend, {action: 'faction', faction: 'vent', slot: friend.slot});
+  assert.equal(friend.faction, 'vent');
+  assert.throws(() => configureMatch(r, friend, {action: 'faction', faction: 'forj', slot: p.slot}));
   assert.throws(() => configureMatch(r, friend, {action: 'faction', faction: '__proto__'}));
   configureMatch(r, p, {action: 'bot', slot: 3});
   assert.equal(r.players.find(member => member.bot).slot, 3);
@@ -98,7 +98,7 @@ test('salão preserva identidade, valida anfitrião/modo/facção e não remove 
   configureMatch(r, p, {action: 'bot', slot: 7});
   beginMatch(r, p, false, spawn);
   assert.equal(new Set(r.players.map(member => member.slot)).size, r.players.length);
-  assert.throws(() => configureMatch(r, p, {action: 'faction', faction: 'mares'}));
+  assert.throws(() => configureMatch(r, p, {action: 'faction', faction: 'puls'}));
 });
 
 test('prática legada ainda preenche quatro vagas e vitória pertence à equipe inteira', () => {
@@ -115,8 +115,8 @@ test('prática legada ainda preenche quatro vagas e vitória pertence à equipe 
 
 test('visão aliada é compartilhada; inimigos, economia e escolha ainda oculta não vazam', () => {
   const {r, p} = startFixture('duos', 4), ally = r.players[1], enemy = r.players[2];
-  enemy.heroType = 'storm'; enemy.research = {weapons: 2};
-  const hidden = spawn(r, enemy, 'storm', 1540, 800);
+  enemy.heroType = 'fort_04'; enemy.research = {weapons: 2};
+  const hidden = spawn(r, enemy, 'fort_04', 1540, 800);
   const scout = r.entities.find(e => e.owner === ally.id && e.type === 'soldier');
   scout.x = 850; scout.y = 700;
   const seen = spawn(r, enemy, 'archer', 1000, 700);

@@ -1,0 +1,28 @@
+ARTE DA GUERRA 0.9.0 — INTEGRAÇÃO COM TRABALHO EM PARALELO
+
+Base utilizada: main, versão 0.8.1
+SHA-base: af83940dbd5d7dfaf41d12bafc52ea2bc3bd4fdd
+Repositório: https://github.com/Maximiliansabino/arte-da-guerra
+
+O pacote contém o jogo completo e um patch das alterações em relação
+à base acima. Ele pode ser executado separado para testar sem alterar
+o repositório do colaborador.
+
+Para integrar:
+1. Preserve as mudanças locais e consulte novamente o HEAD do GitHub.
+2. Crie uma branch de integração a partir da versão atual do amigo.
+3. Se o HEAD ainda for o SHA-base, aplique o patch e revise o diff.
+4. Se o HEAD mudou, faça integração em três vias ou compare as mudanças
+   do patch com os commits novos. Resolva conflitos preservando ambas
+   as correções; não copie o ZIP sobre a versão nova sem comparar.
+5. Execute npm test na árvore integrada e teste o jogo com o amigo.
+6. Confirme 0.9.0 no cabeçalho/lobby e só então atualize a hospedagem.
+
+Exemplo, após criar a branch e conferir a base:
+  git apply --check ALTERACOES-0.9.0.patch
+  git apply ALTERACOES-0.9.0.patch
+  npm test
+
+Se a checagem falhar, não force a aplicação; compare os conflitos.
+O patch da entrega é externo ao conteúdo ao qual ele deve ser aplicado.
+Não inclui credenciais, node_modules, pastas de cache ou dados de salas.

@@ -2,71 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SpellEffects} from '../public/spell-effects.js';
 import {ABILITIES} from '../public/legends.js';
-
-const event = (id, ability = 'roots', at = 10) => ({id, ability, at, owner:'p1', from:{x:400,y:400}, to:{x:500,y:500}, ...ABILITIES[ability]});
-const state = (events, time = 10, code = 'sala') => ({code,time,spellEvents:events});
-function recordingContext() {
-  const calls=[];
-  const context = new Proxy({calls}, {
-    get(target, name) {
-      if(name in target)return target[name];
-      return (...args)=>{for(const value of args)if(typeof value==='number')assert.ok(Number.isFinite(value),`${String(name)} must be finite`);calls.push({name,args});};
-    },
-    set(target,name,value) {
-      if(name==='globalAlpha')assert.ok(Number.isFinite(value)&&value>=0&&value<=1,`alpha ${value}`);
-      target[name]=value;return true;
-    }
-  });
-  return context;
-}
-
-test('as 18 magias renderizam partículas finitas sem alterar o estado da partida', () => {
-  const events=Object.keys(ABILITIES).map((id,i)=>event(i+1,id)), snapshot=state(events);
-  const original=JSON.stringify(snapshot), effects=new SpellEffects();
-  effects.ingest(snapshot,1000);
-  const ctx=recordingContext();
-  for(const now of [1050,1250,1600,2400])effects.draw(ctx,now);
-  assert.equal(effects.events.length,18);
-  assert.equal(JSON.stringify(snapshot),original);
-  assert.ok(ctx.calls.some(call=>call.name==='arc'));
-  assert.ok(ctx.calls.some(call=>call.name==='bezierCurveTo'));
-  assert.ok(ctx.calls.some(call=>call.name==='fillText'));
-});
-
-test('magias não repetem snapshots e preservam eventos de lote fora de ordem', () => {
-  const effects=new SpellEffects();
-  effects.ingest(state([event(3),event(1,'whirl'),event(2,'tide'),event(3)]),1000);
-  assert.equal(effects.events.length,3);
-  const starts=effects.events.map(e=>e.started);
-  effects.ingest(state([event(1),event(2),event(3)],10.1),1100);
-  assert.equal(effects.events.length,3);assert.deepEqual(effects.events.map(e=>e.started),starts);
-});
-
-test('magias expiram, não reproduzem histórico antigo e reiniciam os IDs ao mudar de sala', () => {
-  const effects=new SpellEffects();
-  effects.ingest(state([event(1,'suncoil')],20),1000);
-  assert.equal(effects.events.length,0);
-  effects.ingest(state([event(2,'suncoil',20)],20),1000);
-  assert.equal(effects.events.length,1);
-  effects.draw(recordingContext(),10000);assert.equal(effects.events.length,0);
-  effects.ingest(state([event(1,'tide')],10,'outra-sala'),10000);
-  assert.equal(effects.events.length,1);assert.equal(effects.lastId,1);
-});
-
-test('eventos inválidos são descartados e o orçamento visual permanece limitado', () => {
-  const effects=new SpellEffects();
-  effects.ingest(state([{...event(1),to:{x:Infinity,y:1}},{...event(2),at:NaN}]),1000);
-  assert.equal(effects.events.length,0);
-  effects.ingest(state(Array.from({length:300},(_,i)=>event(i+3))),1000);
-  assert.equal(effects.events.length,96);
-  const ctx=recordingContext();effects.setReducedMotion(true);effects.draw(ctx,1400);
-  assert.ok(ctx.calls.length>0);
-});
-
-test('movimento reduzido diminui partículas sem remover a indicação da magia', () => {
-  const normal=new SpellEffects(), reduced=new SpellEffects(), snapshot=state([event(1,'whirl')]);
-  normal.ingest(snapshot,1000);reduced.ingest(snapshot,1000);reduced.setReducedMotion(true);
-  const a=recordingContext(),b=recordingContext();normal.draw(a,1500);reduced.draw(b,1500);
-  assert.ok(b.calls.length<a.calls.length);
-  assert.ok(b.calls.some(call=>call.name==='fillText'&&call.args[0]===ABILITIES.whirl.name));
-});
+const ids=Object.keys(ABILITIES),event=(id,ability=ids[0],at=10,phase='impact')=>({...ABILITIES[ability],id,ability,at,phase,owner:'p1',from:{x:400,y:400},to:{x:500,y:500}});
+const state=(events,time=10,code='sala')=>({code,time,spellEvents:events});
+function canvas(){const calls=[],stack=[],ctx=new Proxy({}, {get(t,k){if(k in t)return t[k];return(...args)=>{for(const a of args)if(typeof a==='number')assert.ok(Number.isFinite(a),`${k} finite`);if(k==='save')stack.push(1);if(k==='restore')assert.equal(stack.pop(),1);calls.push({name:k,args});};},set(t,k,v){if(k==='globalAlpha')assert.ok(Number.isFinite(v)&&v>=0&&v<=1);t[k]=v;return true;}});return{ctx,calls,stack};}
+test('72 habilidades: preparação e resolução finitas, IDs originais e estado intacto',()=>{assert.equal(ids.length,72);const snapshot=state(ids.map((a,i)=>event(i+1,a,10,'cast'))),copy=JSON.stringify(snapshot),fx=new SpellEffects();fx.ingest(snapshot,1000);assert.equal(fx.events.length,72);const c=canvas();fx.draw(c.ctx,1050);assert.ok(c.calls.some(x=>x.name==='fillText'));assert.equal(c.stack.length,0);assert.equal(JSON.stringify(snapshot),copy);fx.ingest(state(ids.map((a,i)=>event(i+73,a,10.1)),10.1),1100);assert.equal(fx.events.length,72);fx.draw(c.ctx,1150);assert.equal(c.stack.length,0);});
+test('snapshots repetidos e lote fora de ordem não reiniciam animações',()=>{const fx=new SpellEffects();fx.ingest(state([event(3),event(1,ids[4]),event(2,ids[7]),event(3)]),1000);assert.equal(fx.events.length,3);const starts=fx.events.map(e=>e.started);fx.ingest(state([event(1),event(2),event(3)],10.1),1100);assert.equal(fx.events.length,3);assert.deepEqual(fx.events.map(e=>e.started),starts);});
+test('efeitos expiram, não repetem histórico e reiniciam em outra sala',()=>{const fx=new SpellEffects();fx.ingest(state([event(1)],20),1000);assert.equal(fx.events.length,0);fx.ingest(state([event(2,ids[0],20)],20),1000);assert.equal(fx.events.length,1);fx.draw(canvas().ctx,30000);assert.equal(fx.events.length,0);fx.ingest(state([event(1)],10,'nova'),30000);assert.equal(fx.events.length,1);assert.equal(fx.lastId,1);});
+test('cancelamento remove preparação sem gerar impacto fictício',()=>{const fx=new SpellEffects();fx.ingest(state([event(1,ids[2],10,'cast')]),1000);assert.equal(fx.events[0].phase,'cast');fx.ingest(state([event(2,ids[2],10.1,'cancel')],10.1),1100);assert.equal(fx.events.length,0);const c=canvas();fx.draw(c.ctx,1200);assert.equal(c.calls.length,0);});
+test('geometria usa faixa/cone real e não substitui tudo por círculos',()=>{const fx=new SpellEffects();fx.ingest(state([{...event(1,'fort_03_q',10,'cast'),geometry:{shape:'line',length:240,width:24,angle:0}},{...event(2,'fort_01_w',10,'cast'),geometry:{shape:'cone',length:90,arc:Math.PI/3,angle:1}}]),1000);assert.equal(fx.events[0].geometry.width,24);assert.equal(fx.events[1].geometry.arc,Math.PI/3);const c=canvas();fx.draw(c.ctx,1100);assert.ok(c.calls.some(x=>x.name==='arc'&&x.args[2]===90));assert.ok(c.calls.some(x=>x.name==='lineTo'&&x.args[0]===640));});
+test('dados inválidos e futuros são descartados, orçamento limitado',()=>{const fx=new SpellEffects();fx.ingest(state([{...event(1),to:{x:Infinity,y:0}},{...event(2),at:NaN},event(3,ids[0],11)]),1000);assert.equal(fx.events.length,0);fx.ingest(state(Array.from({length:300},(_,i)=>event(i+4))),1000);assert.equal(fx.events.length,160);const c=canvas();fx.setReducedMotion(true);fx.draw(c.ctx,1200);assert.equal(c.stack.length,0);});
+test('movimento reduzido mantém nomes/áreas, mas reduz partículas',()=>{const a=new SpellEffects(),b=new SpellEffects(),snap=state([event(1,'puls_04_r')]);a.ingest(snap,1000);b.ingest(snap,1000);b.setReducedMotion(true);const ca=canvas(),cb=canvas();a.draw(ca.ctx,1150);b.draw(cb.ctx,1150);assert.ok(cb.calls.length<ca.calls.length);assert.ok(cb.calls.some(c=>c.name==='fillText'&&c.args[0]===ABILITIES.puls_04_r.name));});
+test('marca de alvo não desenha entidade que saiu da visão',()=>{const fx=new SpellEffects();fx.ingest({...state([{...event(1,'puls_06_q'),duration:4,targetIds:[123]}]),entities:[{id:123,x:700,y:800,hp:100}]},1000);const c=canvas();fx.draw(c.ctx,1400);assert.ok(c.calls.some(c=>c.name==='moveTo'&&c.args[0]>690));fx.ingest({...state([],10.5),entities:[]},1500);const hidden=canvas();fx.draw(hidden.ctx,1600);assert.equal(hidden.calls.some(c=>c.name==='moveTo'&&c.args[0]>690),false);});
+test('drop: preparo não cura; zona só liga alvos e pulso confirmado faz o flash',()=>{const fx=new SpellEffects(),base={id:1,ability:'drop_restore',at:10,owner:'p1',from:{x:400,y:400},to:{x:500,y:500},radius:150,duration:.6,phase:'cast'};fx.ingest(state([base]),1000);assert.equal(fx.events[0].phase,'cast');assert.equal(fx.events[0].name,'Carga Restauradora');fx.ingest({...state([{...base,id:2,at:10.6,phase:'zone',duration:5,targetIds:[8]}],10.6),entities:[{id:8,x:520,y:500,hp:50}]},1600);const zone=canvas();fx.draw(zone.ctx,1700);assert.ok(!zone.calls.some(x=>x.name==='lineTo'&&x.args[0]===524),'não produz cruz de cura antes do pulso');fx.ingest({...state([{...base,id:3,at:11.6,phase:'pulse',duration:.25,targetIds:[8]}],11.6),entities:[{id:8,x:520,y:500,hp:75}]},2600);assert.equal(fx.events.filter(e=>e.area).length,1);assert.equal(fx.events.at(-1).phase,'pulse');assert.equal(fx.events.at(-1).life,.5);});

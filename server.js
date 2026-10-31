@@ -70,6 +70,7 @@ export const server=http.createServer(async(req,res)=>{
    '/':'index.html','/client.js':'client.js','/terrain.js':'terrain.js',
    '/rules.js':'rules.js','/legends.js':'legends.js','/match-config.js':'match-config.js','/ai-config.js':'ai-config.js',
    '/hero-roster.js':'hero-roster.js','/camp-config.js':'camp-config.js',
+   '/tribes-data.js':'tribes-data.js','/tribe-art.js':'tribe-art.js','/tooltips.js':'tooltips.js','/portraits.js':'portraits.js',
    '/recruitment.js':'recruitment.js','/hero-guide.js':'hero-guide.js',
    '/combat-effects.js':'combat-effects.js','/spell-effects.js':'spell-effects.js',
    '/scene-art.js':'scene-art.js','/neutral-art.js':'neutral-art.js','/audio.js':'audio.js','/style.css':'style.css',
@@ -103,4 +104,4 @@ server.on('connection',socket=>{const ip=socket.remoteAddress,n=connections.get(
 const timer=setInterval(()=>{for(const r of rooms.values()){const active=r.phase==='playing';step(r);if(active)broadcast(r);}},100);timer.unref();
 const heartbeat=setInterval(()=>{for(const s of streams.values())if(!s.destroyed)s.write(': ping\n\n');},15000);heartbeat.unref();
 const cleanup=setInterval(()=>{const now=Date.now();for(const [key,b]of limits)if(now-b.t>60000)limits.delete(key);lifecycle.sweep();},1000);cleanup.unref();
-if(process.argv[1]===fileURLToPath(import.meta.url))server.listen(Number(process.env.PORT)||3000,'0.0.0.0',()=>console.log(`Arte da Guerra: http://localhost:${server.address().port}`));
+if(process.argv[1]===fileURLToPath(import.meta.url))server.listen(Number(process.env.PORT)||Number(process.argv[process.argv.indexOf('--port')+1])||3000,'0.0.0.0',()=>console.log(`Arte da Guerra: http://localhost:${server.address().port}`));

@@ -39,7 +39,7 @@ test('navegação: caminho com alcance de interação cruza uma ponte sem atrave
 });
 
 test('navegação: o último trecho menor que um pixel ainda entra no alcance exato', () => {
-  const target = building(1, 650, 300), fighter = unit(2, 430, 180, 'ember'), r = room([target, fighter], true);
+  const target = building(1, 650, 300), fighter = unit(2, 430, 180, 'fort_05'), r = room([target, fighter], true);
   let status;
   for (let i = 0; i < 100; i++) {tick(r); status = walk(fighter, target, .1, r, 60); if (status === 'arrived') break;}
   assert.equal(status, 'arrived');

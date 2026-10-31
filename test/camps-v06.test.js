@@ -1,3 +1,4 @@
+import {addShield} from '../combat-status.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {room, addPlayer, configureLobby, start, spawn, command, step} from '../game.js';
@@ -116,19 +117,21 @@ test('todos os níveis pagam por mercenário e mortes sem responsável também r
 
 test('magia fatal libera só ao autor a segunda vaga paga e preserva a hora real da morte', () => {
   const {r, a, b, ally} = match('three-bridges', true), camp = bossCamp(r), guard = camp.guards[0];
-  const boss = entityFor(r, guard), hero = spawn(r, a, 'ranger', boss.x - 100, boss.y);
+  const boss = entityFor(r, guard), hero = spawn(r, a, 'forj_04', boss.x - 100, boss.y);
   const heroCount = r.entities.filter(entity => STATS[entity.type].hero).length;
   const gold = a.gold;
   boss.hp = 20; r.time = 3;
-  command(r, a, {type:'cast', ids:[hero.id], ability:'tide', x:boss.x, y:boss.y});
+  command(r, a, {type:'cast', ids:[hero.id], ability:'forj_04_q', x:boss.x, y:boss.y});
+  assert.equal(boss.hp,20,'o aviso antecede o dano');
+  r.time=3.7;tickPowers(r,.7);
   assert.ok(boss.hp <= 0);
   assert.equal(boss.lastHitOwner, a.id);
-  r.time = 3.1; rewardDefeated(r); updateCamps(r, spawn);
+  r.time = 3.8; rewardDefeated(r); updateCamps(r, spawn);
   assert.equal(a.heroLimit, 2);
   assert.equal(b.heroLimit, 1);
   assert.equal(ally.heroLimit, 1);
   assert.equal(a.gold, gold + CAMP_TYPES.boss.gold);
-  assert.equal(guard.respawnAt, 123, 'o temporizador começa na magia, não na atualização seguinte');
+  assert.equal(guard.respawnAt, 123.7, 'o temporizador começa na magia, não na atualização seguinte');
   assert.equal(hero.xp, CAMP_TYPES.boss.xp);
   assert.equal(r.entities.filter(entity => STATS[entity.type].hero).length, heroCount, 'a vaga não cria um herói grátis');
   rewardDefeated(r); updateCamps(r, spawn);
@@ -138,16 +141,17 @@ test('magia fatal libera só ao autor a segunda vaga paga e preserva a hora real
 
 test('dano periódico identifica o autor mesmo depois que o herói morre', () => {
   const {r, a, b} = match(), camp = bossCamp(r), guard = camp.guards[0], boss = entityFor(r, guard);
-  const hero = spawn(r, a, 'ember', boss.x - 100, boss.y);
+  const hero = spawn(r, a, 'puls_04', boss.x - 100, boss.y);
   hero.heroLevel = 5; hero.mana = 230; boss.hp = 10;
-  command(r, a, {type:'cast', ids:[hero.id], ability:'suncoil', x:boss.x, y:boss.y});
+  command(r, a, {type:'cast', ids:[hero.id], ability:'puls_04_r', x:boss.x, y:boss.y});
+  r.time=.8;tickPowers(r,.8);assert.equal(boss.hp,10);
   hero.hp = 0;
-  r.time = .1; tickPowers(r, .1); updateCamps(r, spawn);
+  r.time = 2.3; tickPowers(r, 1.5); updateCamps(r, spawn);
   assert.ok(boss.hp <= 0);
   assert.equal(boss.lastHitOwner, a.id);
   assert.equal(a.heroLimit, 2);
   assert.equal(b.heroLimit, 1);
-  assert.equal(guard.respawnAt, 120.1);
+  assert.equal(guard.respawnAt, 122.3);
 });
 
 test('novas vidas do chefe permitem outros vencedores, mas ninguém supera duas vagas', () => {
@@ -192,7 +196,7 @@ test('impacto do chefe avisa, permite esquiva e respeita armadura, escudo e reca
   const building = spawn(r, a, 'tower', boss.x + 110, boss.y);
   const neutral = r.entities.find(entity => entity.owner === 'neutral' && !entity.boss);
   neutral.x = boss.x + 45; neutral.y = boss.y;
-  protectedUnit.research.armor = 2; protectedUnit.shield = 20; protectedUnit.shieldUntil = 100;
+  protectedUnit.research.armor = 2; addShield(r,protectedUnit,protectedUnit,20,100,'boss-shield');
   const before = new Map([protectedUnit, dodger, exposed, building, neutral].map(entity => [entity.id, entity.hp]));
   r.time = 8; updateCamps(r, spawn);
   assert.equal(boss.quakeAt, 9.6);
