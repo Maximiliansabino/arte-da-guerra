@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {room,addPlayer,configureLobby,start,command,step,spawn,snapshot} from '../game.js';
-import {route,terrainBlocked,segmentClear,MAP} from '../public/terrain.js';
+import {route,terrainBlocked,segmentClear,MAP,getMap} from '../public/terrain.js';
 test('salão: apenas anfitrião configura, bots ocupam vaga escolhida e humanos usam vagas livres',()=>{
  const r=room(),a=addPlayer(r,'A'),b=addPlayer(r,'B');
  assert.throws(()=>configureLobby(r,b,{action:'bot',slot:2}));
@@ -26,12 +26,12 @@ test('terreno: rio bloqueia, três pontes conectam as margens e rotas não atrav
  assert.ok(crossed);assert.ok(Math.hypot(prev.x-b.x,prev.y-b.y)<30);
 });
 test('mapa: servidor navega pela ponte e acampamentos têm guardiões neutros e recompensa única',()=>{
- const r=room(undefined,true),a=addPlayer(r,'A');addPlayer(r,'B');start(r,a);assert.equal(r.camps.length,4);assert.equal(r.entities.filter(e=>e.owner==='neutral').length,8);
+ const r=room(undefined,true),a=addPlayer(r,'A');addPlayer(r,'B');start(r,a);assert.equal(r.camps.length,getMap(r.mapId).camps.length);assert.equal(r.entities.filter(e=>e.owner==='neutral').length,r.camps.reduce((sum,camp)=>sum+camp.guards.length,0));
  const soldier=r.entities.find(e=>e.owner===a.id&&e.type==='soldier');soldier.x=700;soldier.y=300;
  command(r,a,{type:'move',ids:[soldier.id],x:1100,y:300});for(let n=0;n<100;n++){step(r);assert.equal(terrainBlocked(soldier.x,soldier.y),false);}assert.ok(soldier.x>1000);
- const camp=r.camps[0],guards=r.entities.filter(e=>e.camp===camp.id);for(const guard of guards)guard.hp=1;
+ const camp=r.camps[0],guards=r.entities.filter(e=>e.camp===camp.id),reward=guards.reduce((sum,guard)=>sum+guard.goldReward,0);for(const guard of guards)guard.hp=1;
  const hero=spawn(r,a,'storm',camp.x,camp.y);hero.cd=0;const gold=a.gold;
- for(let n=0;n<60;n++)step(r);assert.ok(camp.cleared);assert.equal(a.gold,gold+120);for(let n=0;n<10;n++)step(r);assert.equal(a.gold,gold+120);
+ for(let n=0;n<60;n++)step(r);assert.ok(camp.cleared);assert.equal(a.gold,gold+reward);for(let n=0;n<10;n++)step(r);assert.equal(a.gold,gold+reward);
 });
 
 test('máquina aliada escolhe base inimiga e nunca a do anfitrião',()=>{

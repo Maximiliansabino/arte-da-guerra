@@ -2,12 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
-import {MAP} from '../public/terrain.js';
+import * as terrain from '../public/terrain.js';
+import * as heroRoster from '../public/hero-roster.js';
+import * as campConfig from '../public/camp-config.js';
+import {planRecruitment, trainerFor} from '../public/recruitment.js';
+const {MAP} = terrain;
 import * as rules from '../public/rules.js';
 import * as legends from '../public/legends.js';
 import * as matchConfig from '../public/match-config.js';
 import * as aiConfig from '../public/ai-config.js';
 import {createSceneArt} from '../public/scene-art.js';
+import {drawNeutral as drawMercenary, NEUTRAL_ART} from '../public/neutral-art.js';
 import {createSpellEffects} from '../public/spell-effects.js';
 import {createAudio} from '../public/audio.js';
 import {createCombatEffects} from '../public/combat-effects.js';
@@ -71,7 +76,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    ...rules, ...legends, ...matchConfig, ...aiConfig, MAP, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
+    ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), createCombatEffects, createSceneArt, drawMercenary, NEUTRAL_ART, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
     TextDecoder, AbortController, console,
@@ -299,7 +304,7 @@ test('cliente: mercado e inventário enviam item e espaço corretos e atualizam 
   assert.deepEqual(actionsWith(h,'inventory-action').map(button=>button.disabled),[false,false,true]);
   await actionsWith(h,'inventory-action')[0].onclick();
   assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'useItem',slot:0});
-  press(h,'2'); await Promise.resolve();
+  press(h,'2',{altKey:true}); await Promise.resolve();
   assert.deepEqual(h.requests.at(-1).body,{ids:[10],type:'useItem',slot:1});
   hero.hp=hero.maxHp; hero.mana=hero.maxMana; hero.inventory=['charm']; h.run('refreshActions()');
   assert.equal(actionsWith(h,'shop-action')[2].disabled,true,'duplicate talisman disabled');
@@ -527,12 +532,121 @@ test('cliente: painel da construção mostra obras, evolução, pesquisa e trein
   assert.equal(h.elements.get('#production-empty').hidden,false);
 });
 
-test('cliente: fila é ocultada ao selecionar personagens, adversários ou várias construções', () => {
+test('cliente: fila é ocultada ao selecionar personagens e adversários, mas mostra várias construções próprias', () => {
   const h=harness();h.initial.entities[1].queue=['bastion'];h.run('refreshActions()');
   assert.equal(h.elements.get('#production-panel').hidden,false);
-  for(const code of ['selected=new Set([3])','selected=new Set([4])','selected=new Set([1,2])','selected=new Set()']){
+  for(const code of ['selected=new Set([3])','selected=new Set([4])','selected=new Set()']){
     h.run(code+';refreshActions()');
     assert.equal(h.elements.get('#production-panel').hidden,true);
     assert.equal(h.elements.get('#production-list').children.length,0);
   }
+  h.run('selected=new Set([1,2]);refreshActions()');
+  assert.equal(h.elements.get('#production-panel').hidden,false);
+  assert.match(h.elements.get('#production-list').textContent,/Curupira/);
+});
+
+test('cliente: mapa é escolhido pelo anfitrião e treino aplica o terreno antes de iniciar', async () => {
+  const initial=fixture();initial.phase='lobby';initial.mapId=terrain.DEFAULT_MAP;
+  const h=harness(initial);h.run('updateUI()');
+  assert.deepEqual(h.elements.get('#map-choice').children.map(option=>option.value),Object.keys(terrain.MAPS));
+  assert.deepEqual(h.elements.get('#training-map').children.map(option=>option.value),Object.keys(terrain.MAPS));
+  assert.equal(h.elements.get('#map-choice').disabled,false);
+  h.elements.get('#map-choice').value='enchanted-lagoon';await h.elements.get('#map-choice').onchange();
+  assert.deepEqual(h.requests.at(-1).body,{action:'map',mapId:'enchanted-lagoon'});
+  initial.mapId='enchanted-lagoon';h.run('updateUI()');
+  assert.equal(h.elements.get('#battlefield-map-name').textContent,terrain.MAPS['enchanted-lagoon'].name);
+  assert.match(h.elements.get('#maphint').textContent,/sorteadas/);
+  h.run("session.id='p2';updateUI()");assert.equal(h.elements.get('#map-choice').disabled,true);
+  h.run("session.id='p1';state.phase='playing';updateUI()");assert.equal(h.elements.get('#map-choice').disabled,true);
+  h.run('session=null');h.elements.get('#training-map').value='crystal-ridge';const posts=[];
+  h.sandbox.fetch=async(url,options)=>{if(url.includes('/events'))return {ok:false};posts.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>url==='/api/create'?{id:'p1',code:'map-practice',token:'token'}:{ok:true}};};
+  await h.elements.get('#practice').onclick();
+  assert.deepEqual(posts.map(post=>post.body.action||post.url),['/api/create','mode','map','/api/start?room=map-practice']);
+  assert.deepEqual(posts[2].body,{action:'map',mapId:'crystal-ridge'});
+});
+
+test('cliente: segunda vaga permite outra lenda paga, impede cópias e preserva as duas escolhas após morte', async () => {
+  const h=harness(),player=h.initial.players[0],first=rules.HERO_TYPES[0],second=rules.HERO_TYPES[1];
+  player.heroType=first;player.heroTypes=[first];player.heroLimit=1;
+  h.initial.entities.push(entity(10,first));h.run('updateUI()');
+  assert.ok(heroButtons(h).every(card=>card.disabled));assert.equal(h.elements.get('#hero-capacity').textContent,'1/1');
+  player.heroLimit=2;h.run('updateUI()');
+  assert.equal(h.elements.get('#hero-capacity').textContent,'1/2');
+  assert.match(h.elements.get('#toast').textContent,/Segunda vaga de herói liberada/);
+  assert.equal(heroButtons(h)[0].disabled,true);assert.equal(heroButtons(h).filter(card=>!card.disabled).length,5);
+  await heroButtons(h)[1].onclick();assert.deepEqual(h.requests.at(-1).body,{ids:[2],type:'train',unit:second});
+  const otherHall=entity(11,'hall');otherHall.queue=[second];h.initial.entities.push(otherHall);player.heroTypes=[first,second];h.run('refreshActions()');
+  assert.ok(heroButtons(h).every(card=>card.disabled),'fila em outro salão conta para as duas vagas');
+  h.initial.entities=h.initial.entities.filter(e=>e.id!==10);h.run('updateUI()');
+  assert.equal(heroButtons(h)[0].disabled,false);assert.equal(heroButtons(h).filter(card=>!card.disabled).length,1);
+  otherHall.queue=[];h.run('refreshActions()');
+  assert.deepEqual(heroButtons(h).map(card=>card.disabled),[false,false,true,true,true,true]);
+  player.gold=0;h.run('refreshActions()');assert.ok(heroButtons(h).every(card=>card.disabled),'vaga desbloqueada não dá herói gratuito');
+});
+
+test('cliente: F1 alterna as duas lendas vivas e centraliza a câmera sem selecionar inimigos', () => {
+  const h=harness();h.initial.players[0].heroLimit=2;
+  h.initial.entities.push(entity(10,'bastion','p1',500,600),entity(12,'storm','p1',750,800),entity(9,'warden','p2',650,650));
+  press(h,'F1');assert.deepEqual(Array.from(h.run('[...selected]')),[10]);assert.deepEqual(JSON.parse(h.run('JSON.stringify(camera)')),{x:500,y:600});
+  press(h,'F1');assert.deepEqual(Array.from(h.run('[...selected]')),[12]);assert.deepEqual(JSON.parse(h.run('JSON.stringify(camera)')),{x:750,y:800});
+  press(h,'F1');assert.deepEqual(Array.from(h.run('[...selected]')),[10]);
+  h.initial.entities.find(e=>e.id===10).hp=0;press(h,'F1');assert.deepEqual(Array.from(h.run('[...selected]')),[12]);
+});
+
+test('cliente: três mapas desenham geometrias próprias e todas as classes de mercenários sem coordenadas inválidas', () => {
+  const h=harness();
+  for(const [index,map] of Object.values(terrain.MAPS).entries()){
+    h.initial.mapId=map.id;h.initial.camps=map.camps.map((camp,id)=>({...camp,id,name:campConfig.CAMP_TYPES[camp.tier].name,reward:campConfig.CAMP_TYPES[camp.tier].gold,visible:true,alive:1,count:1,guards:[{respawnAt:null}]}));
+    h.initial.startingPositions=[{slot:0,x:1580,y:220},{slot:1,x:220,y:1580}];
+    h.initial.entities=h.initial.entities.filter(e=>e.owner!=='neutral');
+    for(const [n,type] of campConfig.NEUTRAL_TYPES.entries())h.initial.entities.push({...entity(100+n,type,'neutral',600+n*100,900),neutralTier:Object.keys(campConfig.CAMP_TYPES)[n],boss:type==='colossus'});
+    h.calls.length=0;h.run(`updateUI();render(${1000+index*16})`);
+    assert.equal(h.elements.get('#battlefield-map-name').textContent,map.name);
+    assert.ok(h.calls.some(c=>c.name==='fillText'&&c.args[0]==='✦ CHEFE'));
+    assert.ok(h.calls.some(c=>c.name==='strokeRect'&&c.args[2]===8&&c.args[3]===8),'marcadores de posições iniciais são públicos');
+    h.calls.length=0;h.run('drawMapWater(getMap(state.mapId))');
+    assert.equal(h.calls.some(c=>c.name==='fillRect'&&c.args[0]===840&&c.args[2]===120&&c.args[3]===1800),!!map.river);
+    assert.equal(h.calls.filter(c=>c.name==='ellipse'&&c.args[2]===240&&c.args[3]===240).length,map.lakes.length);
+  }
+});
+
+test('cliente: retorno individual mostra dois minutos por morte e não continua contando sob a névoa', () => {
+  const h=harness();h.initial.mapId='three-bridges';h.initial.time=30;h.initial.fog={visible:[],explored:[]};
+  h.sandbox.camp={id:1,x:600,y:900,tier:'easy',name:'Vigias da Trilha',reward:60,visible:true,alive:0,count:2,guards:[{respawnAt:150},{respawnAt:160}]};
+  assert.equal(h.run('campStatus(camp)'),'0/2 mercenários · Retorno 2:00 / 2:10');
+  h.initial.time=150;assert.equal(h.run('campStatus(camp)'),'0/2 mercenários · Retorno pendente / 0:10');
+  h.sandbox.camp.visible=false;h.sandbox.camp.known=true;
+  assert.equal(h.run('campStatus(camp)'),'Última observação · explore para atualizar');
+  h.calls.length=0;h.run('drawCamp(camp)');
+  assert.ok(h.calls.some(c=>c.name==='fillText'&&c.args[0].includes('Última observação')));
+  assert.equal(h.calls.some(c=>c.name==='fillText'&&c.args[0].includes('Retorno')),false);
+  h.sandbox.camp.known=false;assert.equal(h.run('campStatus(camp)'),'Explore para conhecer o acampamento');
+  delete h.sandbox.camp.visible;assert.equal(h.run('campStatus(camp)'),'Explore para conhecer o acampamento','ausência de confirmação visual não revela cronômetro');
+});
+
+test('cliente: golpe do Colosso sinaliza área e desaparece ao perder visão do chefe', () => {
+  const h=harness();h.initial.time=8;
+  h.initial.entities.push({...entity(100,'colossus','neutral',900,900),boss:true,neutralTier:'boss',quakeAt:9.2,quakeX:900,quakeY:900,quakeRadius:150});
+  h.calls.length=0;h.run('drawBossWarnings()');
+  assert.ok(h.calls.some(c=>c.name==='arc'&&c.args[0]===900&&c.args[1]===900&&c.args[2]===150));
+  assert.ok(h.calls.some(c=>c.name==='fillText'&&c.args[0]==='IMPACTO · saia do círculo'));
+  h.initial.entities=h.initial.entities.filter(e=>e.id!==100);h.calls.length=0;h.run('drawBossWarnings()');
+  assert.equal(h.calls.some(c=>c.name==='fillText'),false);
+});
+
+test('cliente: rochas e cristais dos mapas não herdam a largura das trilhas', () => {
+  const h=harness();
+  for(const mapId of Object.keys(terrain.MAPS)){
+    h.sandbox.mapId=mapId;h.calls.length=0;h.run('ctx.lineWidth=90;drawTerrain(getMap(mapId))');
+    const outlines=h.calls.filter(call=>call.name==='stroke');assert.ok(outlines.length>0);
+    assert.ok(outlines.every(call=>call.lineWidth>0&&call.lineWidth<=3),`${mapId}: contornos de obstáculos precisam permanecer finos`);
+  }
+});
+
+test('cliente: voltar ao início avisa saída, cancela stream e limpa sessão antes da navegação',async()=>{
+ const h=harness();h.sandbox.AbortSignal=AbortSignal;let aborted=false;
+ h.sandbox.abortTest=()=>{aborted=true;};h.run('streamController={abort:abortTest}');
+ await h.elements.get('#again').onclick();
+ assert.ok(aborted);assert.equal(h.run('session'),null);assert.equal(h.sandbox.location.href,'/');
+ assert.equal(h.requests.length,1);assert.ok(h.requests[0].url.includes('/api/leave?room='));assert.equal(h.requests[0].options.keepalive,true);
 });
