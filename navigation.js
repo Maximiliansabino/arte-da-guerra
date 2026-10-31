@@ -1,4 +1,4 @@
-import {terrainBlocked, segmentClear} from './public/terrain.js';
+import {terrainBlocked, getMap} from './public/terrain.js';
 import {STATS, WORLD, entityStats} from './public/rules.js';
 
 // The grid and the final approach use the same footprint. In particular, the
@@ -13,10 +13,48 @@ const nodePoint = k => ({x: (k % SIZE) * CELL + CELL / 2, y: Math.floor(k / SIZE
 const bounds = (x, y) => x < 15 || y < 15 || x > WORLD - 15 || y > WORLD - 15;
 const terrainGrids = new Map();
 
+// Point samples can miss the tiny triangle where a smoothed route cuts a
+// bridge corner. Sweeping the complete segment uses the same exact footprints
+// as blocked(), so a route accepted here cannot fail halfway through a step.
+function crossesEllipse(a,b,cx,cy,rx,ry=rx) {
+  const x=(a.x-cx)/rx,y=(a.y-cy)/ry,dx=(b.x-a.x)/rx,dy=(b.y-a.y)/ry;
+  const length=dx*dx+dy*dy,t=length?Math.max(0,Math.min(1,-(x*dx+y*dy)/length)):0;
+  return (x+t*dx)**2+(y+t*dy)**2<1;
+}
+function crossesRiverSection(a,b,left,right,top,bottom) {
+  let enter=0,leave=1;
+  for(const [from,to,min,max,open] of [[a.x,b.x,left,right,true],[a.y,b.y,top,bottom,false]]) {
+    const delta=to-from;
+    if(!delta){if(open?from<=min||from>=max:from<min||from>max)return false;continue;}
+    const t1=(min-from)/delta,t2=(max-from)/delta;
+    enter=Math.max(enter,Math.min(t1,t2));leave=Math.min(leave,Math.max(t1,t2));
+    if(enter>=leave)return false;
+  }
+  return enter<leave;
+}
+const segmentClear=(a,b,blocked)=>blocked.clear(a,b);
+
 function makeNavigation(r, extraBuilding = null, ignored = new Set()) {
   const buildings = r.entities.filter(e => e.hp > 0 && STATS[e.type]?.building && !ignored.has(e.id));
   if (extraBuilding) buildings.push(extraBuilding);
   const blocked = (x, y) => bounds(x, y) || (r.mapId && terrainBlocked(x, y, 10, r.mapId)) || buildings.some(b => (x - b.x) ** 2 + (y - b.y) ** 2 < BUILDING_RADIUS ** 2);
+  const map=r.mapId?getMap(r.mapId):null;
+  const riverSections=[];
+  if(map?.river){
+    let top=15;
+    for(const bridge of [...map.bridges].sort((a,b)=>a-b)){
+      riverSections.push([top,bridge-55]);top=bridge+55;
+    }
+    riverSections.push([top,WORLD-15]);
+  }
+  blocked.clear=(a,b)=>{
+    if(!valid(a)||!valid(b)||blocked(a.x,a.y)||blocked(b.x,b.y))return false;
+    if(buildings.some(c=>crossesEllipse(a,b,c.x,c.y,BUILDING_RADIUS)))return false;
+    if(!map)return true;
+    if(map.river&&riverSections.some(([top,bottom])=>crossesRiverSection(a,b,map.river.x-map.river.width/2-10,map.river.x+map.river.width/2+10,top,bottom)))return false;
+    if(map.lakes.some(c=>crossesEllipse(a,b,c.x,c.y,c.rx+10,c.ry+10)))return false;
+    return !map.obstacles.some(c=>crossesEllipse(a,b,c.x,c.y,c.r+10));
+  };
   const terrainKey = r.mapId || null;
   if (!terrainGrids.has(terrainKey)) terrainGrids.set(terrainKey, Uint8Array.from({length: COUNT}, (_, k) => {
     const p = nodePoint(k); return terrainKey && terrainBlocked(p.x, p.y, 10, terrainKey) ? 1 : 0;
@@ -187,6 +225,22 @@ export function walk(e, target, dt, r, reach = 0) {
   else {paths.delete(e); return 'blocked';}
   if (distance(e, target) <= reach + tolerance) {paths.delete(e); return 'arrived';}
   return 'moving';
+}
+
+/** A siege engine needs a clear retreat, never a teleport or a route through
+ * its attacker. Check a small number of local straight escape directions. */
+export function retreatFrom(e, target, dt, r, minimumRange) {
+  if (!valid(target)) return 'blocked';
+  if (e.rootUntil > r.time) return 'rooted';
+  const nav = navigation(r), initial = distance(e, target);
+  const angle = initial > .01 ? Math.atan2(e.y-target.y, e.x-target.x) : (e.id % 8) * Math.PI / 4;
+  for (const turn of [0, -.35, .35, -.7, .7, -1.05, 1.05]) {
+    const step = Math.max(25, minimumRange + 15 - initial);
+    const point = {x:e.x+Math.cos(angle+turn)*step, y:e.y+Math.sin(angle+turn)*step};
+    if (distance(point,target) <= initial || nav.blocked(point.x,point.y) || !segmentClear(e,point,nav.blocked)) continue;
+    return walk(e,point,dt,r);
+  }
+  return 'blocked';
 }
 
 function hasEgress(nav, point, origin, radius = 150) {

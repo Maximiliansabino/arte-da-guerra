@@ -68,7 +68,7 @@ function resourcesFor(r) {
 
 export function createRoom(code = randomBytes(8).toString('hex'), terrain = false) {
   const r = {
-    code, mode: DEFAULT_MODE, difficulty: DEFAULT_DIFFICULTY, fogEnabled: true, mapId: terrain ? 'three-bridges' : null,
+    code, mode: DEFAULT_MODE, difficulty: DEFAULT_DIFFICULTY, botCount: 0, fogEnabled: true, mapId: terrain ? 'three-bridges' : null,
     players: [], entities: [], resources: [], camps: [], startingPositions: [], phase: 'lobby', tick: 0, time: 0,
     nextId: 1, nextCombatId: 1, nextSpellId: 1, combatEvents: [], spellEvents: [], zones: [],
     winner: null, winningTeam: null, winners: [], created: Date.now(), touched: Date.now()
@@ -87,6 +87,10 @@ function prescribedTeam(r, slot) {
   if (r.mode === 'coop') return slot < 4 ? 0 : 1;
   if (r.mode === 'duos') return slot < 2 ? 0 : 1;
   return slot;
+}
+export function cooperativeBotCount(r) {
+  return Number.isInteger(r.botCount) && r.botCount >= 1 && r.botCount <= 4 ? r.botCount :
+    Math.max(1, Math.min(4, r.players.filter(member => !member.bot).length));
 }
 export function addCommander(r, name, bot = false) {
   const mode = modeFor(r);
@@ -118,6 +122,14 @@ export function configureMatch(r, p, a) {
     if (a.action === 'difficulty') {
       if (!Object.hasOwn(DIFFICULTIES, a.difficulty)) throw Error('Escolha uma dificuldade válida: fácil, normal ou difícil.');
       r.difficulty = a.difficulty;
+    } else if(a.action==='botCount'){
+      if(r.mode!=='coop')throw Error('Escolha a quantidade de máquinas no modo cooperativo.');
+      if(!Number.isInteger(a.count)||a.count<0||a.count>4)throw Error('Escolha automático ou de uma a quatro máquinas.');
+      r.botCount=a.count;
+      // Empty machine slots are resolved at start. Keep existing bots only
+      // while they fit the chosen count; never remove or renumber humans.
+      const keep=new Set(r.players.filter(member=>member.bot).sort((a,b)=>a.slot-b.slot).slice(0,cooperativeBotCount(r)).map(member=>member.id));
+      r.players=r.players.filter(member=>!member.bot||keep.has(member.id));
     } else if(a.action==='map'){
       if(!Object.hasOwn(MAPS,a.mapId))throw Error('Escolha um mapa válido.');
       r.mapId=a.mapId;r.startingPositions=[];r.resources=resourcesFor(r);
@@ -129,6 +141,7 @@ export function configureMatch(r, p, a) {
       if (a.mode !== r.mode) {
         r.players = humans;
         r.mode = a.mode;
+        r.botCount = 0;
         r.startingPositions=[];
         for (const member of r.players) member.team = prescribedTeam(r, member.slot);
         r.resources = resourcesFor(r);
@@ -148,9 +161,11 @@ export function configureMatch(r, p, a) {
         bot.slot = a.slot;
         bot.team = prescribedTeam(r, a.slot);
         bot.faction = Object.keys(FACTIONS)[a.slot % 4];
+        if(r.mode==='coop')r.botCount=r.players.filter(member=>member.bot).length;
       } else if (a.action === 'removeBot') {
         if (!target?.bot) throw Error('Apenas computadores podem ser removidos.');
         r.players = r.players.filter(member => member.id !== target.id);
+        if(r.mode==='coop')r.botCount=r.players.filter(member=>member.bot).length;
       } else throw Error('Opção inválida.');
     }
   }
@@ -163,7 +178,10 @@ export function beginMatch(r, p, practice = false, spawn) {
   if (r.mode === 'duos') {
     while (r.players.length < 4) addCommander(r, `Máquina ${r.players.length + 1}`, true);
   } else if (r.mode === 'coop') {
-    while (r.players.filter(member => member.bot).length < 4) addCommander(r, `Máquina ${r.players.filter(member => member.bot).length + 1}`, true);
+    const count=cooperativeBotCount(r);
+    const keep=new Set(r.players.filter(member=>member.bot).sort((a,b)=>a.slot-b.slot).slice(0,count).map(member=>member.id));
+    r.players=r.players.filter(member=>!member.bot||keep.has(member.id));
+    while (r.players.filter(member => member.bot).length < count) addCommander(r, `Máquina ${r.players.filter(member => member.bot).length + 1}`, true);
   } else if (r.mode === 'duel') {
     if (r.players.filter(member => !member.bot).length !== 1) throw Error('O treino permite um jogador contra uma máquina.');
     if (!r.players.some(member => member.bot)) addCommander(r, 'Máquina de treino', true);
@@ -283,7 +301,7 @@ export function snapshotFor(r, viewer) {
   const players = r.players.map(({token, ...member}) => {
     if (full || alliedMatch(r, p.id, member.id)) return member;
     const visibleHeroes=entities.filter(e=>e.owner===member.id&&STATS[e.type]?.hero).map(e=>e.type);
-    return {...member, gold: null, wood: null, heroType: visibleHeroes.includes(member.heroType)?member.heroType:null, heroTypes: [...new Set(visibleHeroes)], heroLimit: null, research: {}, researchQueue: null, troopLevel: null};
+    return {...member, gold: null, wood: null, heroType: visibleHeroes.includes(member.heroType)?member.heroType:null, heroTypes: [...new Set(visibleHeroes)], heroLimit: null, heroProgress: {}, research: {}, researchQueue: null, troopLevel: null};
   });
   const resources = full ? r.resources : r.resources.map(resource => {
     if (pointVisible(sources, resource)) memory.resources.set(resource.id, resource.amount);
@@ -295,11 +313,11 @@ export function snapshotFor(r, viewer) {
       return {...seen,visible:true,known:true};
     }
     const seen=memory.camps.get(camp.id);
-    const {guards,respawnAt,...lastKnown}=seen || {id:camp.id,x:camp.x,y:camp.y,name:camp.name,tier:camp.tier,boss:camp.boss,reward:camp.reward,cleared:false};
+    const {guards,respawnAt,...lastKnown}=seen || {id:camp.id,x:camp.x,y:camp.y,name:camp.name,tier:camp.tier,boss:camp.boss,reward:camp.reward,cleared:false,awakensAt:camp.awakensAt};
     return {...lastKnown,visible:false,known:!!seen};
   });
   return {
-    code: r.code, mode: r.mode || DEFAULT_MODE, difficulty: r.difficulty || DEFAULT_DIFFICULTY, maxPlayers: modeFor(r).maxPlayers, maxHumans: modeFor(r).maxHumans,
+    code: r.code, mode: r.mode || DEFAULT_MODE, difficulty: r.difficulty || DEFAULT_DIFFICULTY, botCount:r.botCount||0, resolvedBotCount:r.mode==='coop'?cooperativeBotCount(r):r.players.filter(member=>member.bot).length, maxPlayers: modeFor(r).maxPlayers, maxHumans: modeFor(r).maxHumans,
     phase: r.phase, tick: r.tick, time: r.time, winner: r.winner, winningTeam: r.winningTeam ?? null, winners: r.winners || [],
     players, entities: full ? entities : entities.map(e => alliedMatch(r, p.id, e.owner) ? e : {...e, order: null, activity: null, rally: null, queue: [], progress: 0, inventory: [], cooldowns: {}, researchJob: null, troopUpgrade: null}),
     mapId: r.mapId, startingPositions: r.startingPositions || [], camps, resources,

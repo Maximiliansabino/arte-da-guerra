@@ -1,14 +1,15 @@
 import {terrainBlocked} from './public/terrain.js';
-import {walk,findProductionExit,planBuildingPlacement,findSafeSpawn,invalidateNavigation,findReachableTarget} from './navigation.js';
+import {walk,retreatFrom,findProductionExit,planBuildingPlacement,findSafeSpawn,invalidateNavigation,findReachableTarget} from './navigation.js';
 import {botTurn} from './ai.js';
 import {initializeCamps,updateCamps} from './camps.js';
 import {registerHeroChoice} from './public/hero-roster.js';
 import {planRecruitment} from './public/recruitment.js';
 import {createRoom,addCommander,configureMatch,beginMatch,snapshotFor,canSee,updateVictory} from './match.js';
 import {FACTIONS} from './public/legends.js';
+import {BOSS_RESET} from './public/camp-config.js';
 import {initializeHero,damageEntity,castAbility,buyItem,useItem,startResearch,startTroopUpgrade,tickPowers,rewardDefeated,emitSpell} from './powers.js';
 import {
-  WORLD, COST, STATS, HERO_TYPES, MAX_LEVEL, entityStats, heroMultiplier,
+  WORLD, COST, STATS, HERO_TYPES, MAX_LEVEL, CONSTRUCTION_DURATION, entityStats, heroMultiplier,
   upgradeCost, upgradeDuration, trainDuration, placementError, allied
 } from './public/rules.js';
 export {WORLD, COST, STATS} from './public/rules.js';
@@ -20,6 +21,7 @@ const point = a => Number.isFinite(a.x) && Number.isFinite(a.y) && a.x >= 20 && 
 const population = (r, p) => r.entities.filter(e => e.owner === p.id).reduce((n, e) => n + 1 + e.queue.length, 0);
 const gatherSearches = new WeakMap();
 const GATHER_SEARCH_RADIUS = 450;
+const CONSTRUCTION_REACH = 65;
 
 function gatherOrder(resource) {
   return {type:'gather',target:resource.id,resourceType:resource.type,origin:{x:resource.x,y:resource.y}};
@@ -76,10 +78,10 @@ export function spawn(r, p, type, x, y) {
   const e = {
     id: r.nextId++, owner: p.id, type,
     x: Math.max(15, Math.min(WORLD - 15, x)), y: Math.max(15, Math.min(WORLD - 15, y)),
-    level: STATS[type].building ? 1 : p.troopLevel || 1, faction:p.faction||'mata',research:{...(p.research||{})},hp: STATS[type].hp, maxHp: STATS[type].hp,
+    level: STATS[type].building || STATS[type].hero || type === 'worker' ? 1 : p.troopLevel || 1, faction:p.faction||'mata',research:{...(p.research||{})},hp: STATS[type].hp, maxHp: STATS[type].hp,
     cd: 0, order: null, queue: [], progress: 0, upgrade: null, activity: {type:'idle'}
   };
-  initializeHero(e);
+  initializeHero(e,p);
   e.hp = e.maxHp = entityStats(e).hp;
   r.entities.push(e);
   if (STATS[type].building) invalidateNavigation(r);
@@ -92,6 +94,47 @@ function pay(p, cost) {
   if (!cost || p.gold < cost[0] || p.wood < cost[1]) throw Error('Recursos insuficientes.');
   p.gold -= cost[0];
   p.wood -= cost[1];
+}
+
+function constructionError(r,p,worker,order) {
+  const error=placementError(r,p.id,worker,order);
+  if(error)return error;
+  if(r.entities.filter(e=>e.owner===p.id&&e.hp>0&&STATS[e.type].building).length>=18)return 'Limite de construções atingido.';
+  if(population(r,p)>=MAX_POPULATION)return 'Limite de unidades atingido.';
+  const cost=COST[order.building];
+  if(!cost||p.gold<cost[0]||p.wood<cost[1])return 'Recursos insuficientes para iniciar a construção.';
+  return null;
+}
+
+function beginConstruction(r,p,worker,order) {
+  const error=constructionError(r,p,worker,order);
+  if(error)throw Error(error);
+  const escape=planBuildingPlacement(r,order);
+  if(!escape)throw Error('Esta construção bloquearia uma unidade ou sua saída. Escolha um local com passagem livre.');
+  pay(p,COST[order.building]);
+  const building=spawn(r,p,order.building,order.x,order.y);
+  building.constructDuration=CONSTRUCTION_DURATION[order.building];
+  building.construct=building.constructDuration;building.hp=1;
+  worker.order=null;worker.activity={type:'idle'};
+  for(const move of escape.moves){move.entity.x=move.x;move.entity.y=move.y;move.entity.activity={type:'idle'};}
+  invalidateNavigation(r);
+  return building;
+}
+
+function updateBuildOrder(r,worker,dt) {
+  const order=worker.order;
+  if(order.failed){worker.activity={type:'blocked',building:order.building,reasonCode:'construction-failed',reason:order.reason};return;}
+  const details={building:order.building,reasonCode:'construction-travel'};
+  const status=advance(r,worker,order,dt,CONSTRUCTION_REACH,details);
+  if(status==='blocked'){
+    order.failed=true;order.reason='Construção não iniciada: Caminho bloqueado. Libere a passagem ou escolha outro local e envie a ordem novamente.';
+    worker.activity={type:'blocked',building:order.building,reasonCode:'construction-failed',reason:order.reason};
+  }
+  if(status!=='arrived')return;
+  const p=r.players.find(player=>player.id===worker.owner&&!player.defeated);
+  if(!p){worker.order=null;return;}
+  try{beginConstruction(r,p,worker,order);}
+  catch(error){order.failed=true;order.reason=`Construção não iniciada: ${error.message}`;worker.activity={type:'blocked',building:order.building,reasonCode:'construction-failed',reason:order.reason};}
 }
 
 export function command(r, p, a) {
@@ -132,21 +175,16 @@ export function command(r, p, a) {
   }
 
   if (a.type === 'build') {
-    const w = own.find(e => e.type === 'worker');
+    const w = own.filter(e=>e.type==='worker').sort((left,right)=>distance(left,a)-distance(right,a))[0];
     if (!['barracks', 'tower', 'hall','workshop'].includes(a.building)) throw Error('Construção inválida.');
-    const error = placementError(r, p.id, w, a);
+    const error = constructionError(r,p,w,a);
     if (error) throw Error(error);
-    if (r.entities.filter(e => e.owner === p.id && STATS[e.type].building).length >= 18) throw Error('Limite de construções atingido.');
-    if (population(r, p) >= MAX_POPULATION) throw Error('Limite de unidades atingido.');
-    const escape=planBuildingPlacement(r,a);
-    if(!escape)throw Error('Esta construção bloquearia uma unidade ou sua saída. Escolha um local com passagem livre.');
-    pay(p, COST[a.building]);
-    const b = spawn(r, p, a.building, a.x, a.y);
-    b.construct = 10;
-    b.hp = 1;
-    for(const move of escape.moves){move.entity.x=move.x;move.entity.y=move.y;move.entity.activity={type:'idle'};}
-    invalidateNavigation(r);
-    return;
+    if(distance(w,a)<=CONSTRUCTION_REACH){const building=beginConstruction(r,p,w,a);return {buildingId:building.id,constructionStarted:true};}
+    // Travel is an order, not a paid foundation. Everything is validated again
+    // at arrival, so cancellation, death or a competing builder costs nothing.
+    w.order={type:'build',building:a.building,x:a.x,y:a.y};
+    w.activity={type:'moving',building:a.building,reasonCode:'construction-travel'};
+    return {workerId:w.id,constructionStarted:false};
   }
 
   if (a.type === 'upgrade') {
@@ -210,6 +248,7 @@ export function step(r, dt = .1) {
   r.combatEvents = r.combatEvents.filter(event => r.time - event.at <= EVENT_LIFETIME);
   if (r.tick % 20 === 0) for (const p of r.players.filter(p => p.bot && !p.defeated)) botTurn(r, p, {command});
   const hits = [];
+  const repairers=new Map();
   const teams=new Map(r.players.map(p=>[p.id,p.team]));
   // Team membership is fixed during a tick. Filter candidate ownership once
   // per team, preserving entity order and refreshing if production adds units.
@@ -221,7 +260,7 @@ export function step(r, dt = .1) {
     e.cd = Math.max(0, e.cd - dt);
     if (e.construct) {
       e.construct = Math.max(0, e.construct - dt);
-      e.hp = Math.min(e.maxHp, e.hp + e.maxHp / 10 * dt);
+      e.hp = Math.min(e.maxHp, e.hp + e.maxHp / (e.constructDuration||10) * dt);
       continue;
     }
     if (e.upgrade) {
@@ -255,8 +294,10 @@ export function step(r, dt = .1) {
         }
       }
     }
+    if(e.boss&&r.time<(e.dormantUntil||0)){e.activity={type:'dormant',reason:'O Colosso desperta às 7min30s.'};continue;}
     if(e.boss&&Number.isFinite(e.quakeAt)){e.activity={type:'casting'};continue;}
     const camp=e.owner==='neutral'?r.camps.find(c=>c.id===e.camp):null;
+    if(camp&&e.returningHome){advance(r,e,camp,dt,35);continue;}
     if(camp&&distance(e,camp)>170){advance(r,e,camp,dt,35);continue;}
     if(e.type==='healer'){
       e.healCd=Math.max(0,(e.healCd||0)-dt);
@@ -264,6 +305,7 @@ export function step(r, dt = .1) {
       if(wounded){e.activity={type:'healing',target:wounded.id};if(e.healCd<=1e-9){wounded.hp=Math.min(wounded.maxHp,wounded.hp+s.heal);e.healCd=1.5;emitSpell(r,e,'healerPulse',wounded,{kind:'heal',radius:35,duration:.8,color:'#8af7d3'});}}
     }
     let target;
+    if(e.order?.type==='build'&&e.type==='worker'){updateBuildOrder(r,e,dt);continue;}
     if (e.order?.type === 'gather') {
       const resource = nextGatherResource(r,e,dt);
       if (!resource) continue;
@@ -280,38 +322,48 @@ export function step(r, dt = .1) {
       const building=r.entities.find(t=>t.id===e.order.target&&t.hp>0&&STATS[t.type].building&&!t.construct&&allied(r,e.owner,t.owner));
       if(!building||building.hp>=building.maxHp){e.order=null;continue;}
       if(distance(e,building)>60)advance(r,e,building,dt,60,{target:building.id});
-      if(distance(e,building)<=60+1e-9){building.hp=Math.min(building.maxHp,building.hp+3*dt);e.activity={type:'repairing',target:building.id};if(building.hp>=building.maxHp){e.order=null;e.activity={type:'idle'};}}
+      if(distance(e,building)<=60+1e-9){
+        const count=repairers.get(building.id)||0;
+        if(count>=2){e.activity={type:'blocked',target:building.id,reason:'Dois trabalhadores já estão reparando esta construção.'};continue;}
+        repairers.set(building.id,count+1);
+        building.hp=Math.min(building.maxHp,building.hp+3*dt);e.activity={type:'repairing',target:building.id};if(building.hp>=building.maxHp){e.order=null;e.activity={type:'idle'};}
+      }
       continue;
     }
     if (e.order?.type === 'move') { advance(r,e,e.order,dt,0,{},true); continue; }
     if (e.order?.type === 'attack') {
-      target = r.entities.find(t => t.id === e.order.target && t.hp > 0 && !allied(r,t.owner,e.owner)&&(distance(e,t)<=s.sight||canSee(r,e.owner,t)));
+      target = r.entities.find(t => t.id === e.order.target && t.hp > 0 && !(t.boss&&r.time<(t.dormantUntil||0)) && !allied(r,t.owner,e.owner)&&(distance(e,t)<=s.sight||canSee(r,e.owner,t)));
       if (!target) e.order = null;
     }
     if (!target && s.damage) {
       // Preserve nearest-target/stable-tie behavior without allocation, sorting,
       // square roots or repeated player searches for every candidate pair.
-      let bestDistance=(s.building?s.range:180)**2;
+      let bestDistance=(s.building?s.range:e.boss?BOSS_RESET.engagementRadius:Math.max(180,s.range||0))**2;
       const team=teams.get(e.owner);
       if(opponentCount!==r.entities.length){opponents.clear();opponentCount=r.entities.length;}
       const key=team??e.owner;
       if(!opponents.has(key))opponents.set(key,r.entities.filter(candidate=>candidate.owner!==e.owner&&(team===undefined||teams.get(candidate.owner)!==team)));
       for(const candidate of opponents.get(key)){
-        if(candidate.hp<=0)continue;
+        if(candidate.hp<=0||(candidate.boss&&r.time<(candidate.dormantUntil||0)))continue;
         const dx=candidate.x-e.x,dy=candidate.y-e.y,d=dx*dx+dy*dy;
         if(d<bestDistance){bestDistance=d;target=candidate;}
       }
     }
-    if(camp&&target&&distance(target,camp)>220)target=null;
+    if(camp&&target&&distance(target,camp)>(e.boss?BOSS_RESET.engagementRadius:220))target=null;
     if(!target&&camp&&distance(e,camp)>35)advance(r,e,camp,dt,35);
     if(!target&&e.order?.type==='attackMove'){advance(r,e,e.order,dt,0,{},true);continue;}
     if (target && s.damage) {
       const reach = s.range + (STATS[target.type].building ? 28 : 0);
+      if(s.minRange&&distance(e,target)<s.minRange){
+        const status=retreatFrom(e,target,dt,r,s.minRange);
+        e.activity=status==='blocked'?{type:'blocked',target:target.id,reason:'Alvo próximo demais. Proteja a catapulta ou libere espaço para recuar.'}:status==='rooted'?{type:'rooted',target:target.id,reason:'Catapulta imobilizada e sem distância para disparar.'}:{type:'moving',target:target.id,reason:'Recuando para obter distância de disparo.'};
+        continue;
+      }
       if(distance(e,target)>reach&&!s.building)advance(r,e,target,dt,reach,{target:target.id});
       if (distance(e, target) <= reach+1e-9) {
         e.activity={type:'attacking',target:target.id};
         if (e.cd <= 1e-9) {
-          const damage = s.damage * heroMultiplier(e.type, target.type)*(s.siege&&STATS[target.type].building?2:1);
+          const damage = s.damage * heroMultiplier(e.type, target.type)*(s.siege&&STATS[target.type].building?(s.buildingDamageMultiplier||2):1);
 
           e.cd = s.cooldown;
           // Save coordinates so the hit is still visible when its target dies.

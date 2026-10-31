@@ -1,5 +1,5 @@
 import {getMap} from './public/terrain.js';
-import {CAMP_TYPES, RESPAWN_SECONDS, BOSS_SLAM} from './public/camp-config.js';
+import {CAMP_TYPES, RESPAWN_SECONDS, BOSS_SLAM, BOSS_AWAKENS_AT, BOSS_RESET} from './public/camp-config.js';
 import {STATS} from './public/rules.js';
 import {damageEntity, emitSpell} from './powers.js';
 
@@ -23,7 +23,14 @@ function spawnGuard(r, camp, guard, spawn) {
   entity.boss = config.boss;
   entity.goldReward = config.gold;
   entity.xpReward = config.xp;
-  if (config.boss) {entity.nextQuakeAt = r.time + BOSS_SLAM.cooldown; entity.quakeAt = null; entity.quakeRadius = BOSS_SLAM.radius;}
+  if (config.boss) {
+    entity.dormantUntil=BOSS_AWAKENS_AT;
+    entity.returningHome=false;
+    entity.lastEngagedAt=r.time;
+    entity.lastBossUpdateAt=r.time;
+    entity.nextQuakeAt = Math.max(r.time,BOSS_AWAKENS_AT) + BOSS_SLAM.cooldown;
+    entity.quakeAt = null; entity.quakeRadius = BOSS_SLAM.radius;
+  }
   guard.entityId = entity.id;
   guard.respawnAt = null;
   return true;
@@ -31,7 +38,28 @@ function spawnGuard(r, camp, guard, spawn) {
 
 function updateBoss(r, boss) {
   if (!boss.boss || boss.hp <= 0) return;
+  const dt=Math.max(0,Math.min(.5,r.time-(boss.lastBossUpdateAt??r.time)));
+  boss.lastBossUpdateAt=r.time;
+  if(r.time<(boss.dormantUntil||0)){
+    boss.hp=boss.maxHp;boss.quakeAt=null;boss.order=null;boss.lastEngagedAt=r.time;
+    return;
+  }
+  const camp=r.camps.find(item=>item.id===boss.camp);
+  const homeDistance=camp?Math.hypot(boss.x-camp.x,boss.y-camp.y):0;
   const hostileUnits = r.entities.filter(e => e.hp > 0 && e.owner !== boss.owner && !STATS[e.type]?.building);
+  const activeEnemies=hostileUnits.some(e=>Math.hypot(e.x-(camp?.x??boss.x),e.y-(camp?.y??boss.y))<=BOSS_RESET.engagementRadius);
+  if(activeEnemies)boss.lastEngagedAt=r.time;
+  if(homeDistance>BOSS_RESET.leash||(!activeEnemies&&r.time-(boss.lastEngagedAt||0)>=BOSS_RESET.idleSeconds&&(boss.hp<boss.maxHp||homeDistance>35))){
+    boss.returningHome=true;boss.quakeAt=null;boss.order=null;
+  }
+  if(boss.returningHome){
+    boss.quakeAt=null;boss.order=null;
+    if(homeDistance<=36){
+      boss.hp=Math.min(boss.maxHp,boss.hp+boss.maxHp*BOSS_RESET.healPerSecond*dt);
+      if(boss.hp>=boss.maxHp){boss.returningHome=false;boss.lastEngagedAt=r.time;boss.nextQuakeAt=r.time+BOSS_SLAM.cooldown;}
+    }
+    return;
+  }
   if (Number.isFinite(boss.quakeAt)) {
     if (r.time + 1e-9 < boss.quakeAt) return;
     const center = {x:boss.quakeX, y:boss.quakeY};
@@ -70,6 +98,7 @@ export function initializeCamps(r, spawn) {
     const config = CAMP_TYPES[tier];
     return {
       id, x:definition.x, y:definition.y, name:config.name, tier, boss:config.boss,
+      ...(config.boss?{awakensAt:BOSS_AWAKENS_AT}:{}),
       reward:config.gold * config.units.length, alive:0, count:config.units.length,
       cleared:false, respawnAt:null,
       guards:config.units.map((type, slot) => ({
@@ -92,6 +121,11 @@ export function updateCamps(r, spawn) {
     if (!Array.isArray(camp.guards)) continue;
     for (const guard of camp.guards) {
       const entity = byId.get(guard.entityId);
+      // A sleeping objective cannot award gold, XP or hero capacity, even if
+      // a script supplies an already-defeated entity before it awakens.
+      if(entity?.boss&&r.time<(entity.dormantUntil||0)&&entity.hp<=0){
+        entity.hp=entity.maxHp;entity.xpAwarded=false;delete entity.diedAt;
+      }
       if (entity?.hp > 0) updateBoss(r, entity);
       if (entity && entity.hp <= 0 && !entity.campDeathHandled) {
         entity.campDeathHandled = true;
