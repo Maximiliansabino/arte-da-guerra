@@ -14,6 +14,7 @@ import * as legends from '../public/legends.js';
 import * as matchConfig from '../public/match-config.js';
 import * as aiConfig from '../public/ai-config.js';
 import {createSceneArt} from '../public/scene-art.js';
+import {hitTestPainted,paintedHealthTop} from '../public/painted-art.js';
 import {NEUTRAL_ART} from '../public/neutral-art.js';
 import {createSpellEffects} from '../public/spell-effects.js';
 import {createAudio} from '../public/audio.js';
@@ -81,6 +82,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
+    hitTestPainted,paintedHealthTop,
     ...catalog, tooltipText, initTooltips:()=>({}), heroPortrait:()=>new Element('canvas'), ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), NEUTRAL_ART, drawMercenary:()=>false, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,

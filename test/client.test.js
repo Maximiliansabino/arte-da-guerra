@@ -14,6 +14,7 @@ import * as legends from '../public/legends.js';
 import * as matchConfig from '../public/match-config.js';
 import * as aiConfig from '../public/ai-config.js';
 import {createSceneArt} from '../public/scene-art.js';
+import {hitTestPainted,paintedHealthTop} from '../public/painted-art.js';
 import {drawNeutral as drawMercenary, NEUTRAL_ART} from '../public/neutral-art.js';
 import {createSpellEffects} from '../public/spell-effects.js';
 import {createAudio} from '../public/audio.js';
@@ -81,6 +82,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
+    hitTestPainted,paintedHealthTop,
     ...catalog, tooltipText, initTooltips:()=>({}), heroPortrait:()=>new Element('canvas'), ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), createCombatEffects, createSceneArt, drawMercenary, NEUTRAL_ART, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
@@ -178,6 +180,16 @@ test('cliente: terreno válido é verde, inválido é vermelho e clique rejeitad
   h.run('updateUI()');
   assert.equal(h.run('building'), null, 'builder death cancels positioning');
   assert.equal(h.elements.get('#buildhint').hidden, true);
+});
+
+test('cliente: prévia de construção acompanha a tribo do jogador nas quatro escolhas', () => {
+  const h=harness();h.select(3);
+  h.run("const previewDraw=sceneArt.drawBuilding;sceneArt.drawBuilding=(ctx,e,...args)=>{globalThis.previewTribe=e.faction;return previewDraw(ctx,e,...args);};setBuild('tower');camera={x:450,y:380};zoom=1;pointer={x:500,y:300};");
+  for(const faction of ['fort','forj','vent','puls']){
+    h.initial.players[0].faction=faction;h.run('drawBuildGhost();');
+    assert.equal(h.run('previewTribe'),faction);
+  }
+  assert.equal(h.requests.length,0,'a prévia não envia ordens de construção');
 });
 
 test('cliente: salão usa hitbox de prédio e seis heróis, níveis e evoluções são renderizados', () => {

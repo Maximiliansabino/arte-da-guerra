@@ -1,10 +1,18 @@
-# Arte da Guerra · 0.9.0
+# Arte da Guerra · 1.0.0
 
 RTS original em português para navegador. Construa, reúna grupos, escolha entre quatro tribos e combine tropas, heróis e cerco. O servidor valida ordens, custos, combate, visão e recompensas.
 
+## Identidade visual 1.0.0
+
+A capa, as quatro tribos e suas construções usam ilustrações pintadas preparadas para o jogo. Cada tribo tem imagens próprias de suas tropas e seis heróis, além de três estágios visuais das cinco construções. As minas exibem estados de disponibilidade, extração e esgotamento; os nós de recurso mantêm suas quantidades e regras.
+
+Nove atlas de imagens reúnem 108 sprites de tropas, heróis e construções, além de seis imagens de ambiente; a capa é um arquivo separado. Movimento, ataques e efeitos combinam essas imagens com animações procedurais 2D. Os atlas não contêm sequências completas quadro a quadro de cada personagem em todas as direções. Os prompts e as revisões de arte estão em `public/assets/v100/`.
+
+Magias compartilham uma linguagem funcional: cura dourada, proteção azul, dano laranja, controle violeta, movimento turquesa e ocultação cinza. Formas e movimento ajudam a identificar cada efeito. Bandeiras e círculos de seleção conservam a identificação de equipe. Os balões têm largura estável, texto organizado e posição limitada à janela.
+
 ## Abrir
 
-Requer Node.js 22 ou superior. Extraia o ZIP inteiro. No Windows, abra `INICIAR-JOGO.cmd`; no macOS/Linux, execute `npm start` nesta pasta. Depois abra **http://localhost:3000**. O pacote usa somente módulos nativos do Node.js: não precisa instalar dependências para jogar.
+Requer Node.js 22 ou superior; reutilize a instalação existente se ela atender à versão mínima. Guarde a pasta anterior e extraia o ZIP inteiro em uma pasta separada. No Windows, abra `INICIAR-JOGO.cmd`; no macOS/Linux, execute `npm start` nesta pasta. Depois abra **http://localhost:3000**. O pacote usa somente módulos nativos do Node.js: não precisa instalar dependências para jogar.
 
 Escolha treino contra uma máquina, duplas 2 × 2, todos contra todos ou cooperativo de um a quatro amigos contra uma a quatro máquinas. O cooperativo automático iguala o número de máquinas ao de humanos. Fácil, Normal e Difícil seguem os mesmos custos, tempos e limites dos jogadores.
 
@@ -49,7 +57,7 @@ O herói do jogador que deu o golpe final recolhe o item a até 40 passos. O ite
 | --- | --- |
 | Selecionar | Clique ou arraste; Shift acrescenta à seleção |
 | Mover, atacar, coletar ou recolher drop | Clique direito no destino/alvo |
-| Grupos de até 12 unidades | Ctrl + 1…9 salva; número seleciona |
+| Grupos de unidades | Ctrl + 1…9 salva toda a seleção própria; número seleciona |
 | Herói no grupo misto | Q/W/R; Tab alterna o herói ativo |
 | Habilidade de exclusivo | E ou botão; uma unidade pronta por ativação |
 | Itens comprados / item raro | Alt + 1…3 / Alt + 4, ou botões |
@@ -74,8 +82,8 @@ Os amigos abrem `http://192.168.1.10:3000`. A configuração de rede/firewall de
 
 ## Atualização em paralelo
 
-Base consultada: `main` do repositório `Maximiliansabino/arte-da-guerra`, commit `af83940dbd5d7dfaf41d12bafc52ea2bc3bd4fdd`, versão 0.8.1. Veja `APLICAR-0.9.0.txt` e `VALIDACAO-0.9.0.md` na entrega. Antes de incorporar o pacote ao trabalho do colaborador, consulte novamente o GitHub e faça a integração em uma branch. Não sobreponha uma versão mais nova copiando a pasta inteira.
+Base consultada: `main` do repositório `Maximiliansabino/arte-da-guerra`, commit `2cb64a5ea35fbab75cf7bfc338e03dab347cdb63`, versão 0.9.0 importada pelo colaborador e preservada nesta entrega. O ZIP inclui o jogo completo e `arte-da-guerra-1.0.0.patch`, relativo a essa base. Veja `APLICAR-1.0.0.txt` e `VALIDACAO-1.0.0.md`. Antes de incorporar o pacote, preserve alterações locais, consulte novamente o GitHub com `git fetch origin`, atualize sua base e faça a integração em uma branch. Execute `git apply --check` antes de aplicar o patch. Não sobreponha uma versão mais nova copiando a pasta inteira.
 
 ## Verificações
 
-Execute `npm test`. Os testes cobrem regras, todos os kits de habilidades, produção, economia, navegação, IA, rede, privacidade da visão, comandos e renderização. Resultados e limites da validação desta entrega estão em `VALIDACAO-0.9.0.md`. A meta de partidas próximas de dez minutos exige acompanhamento separado no 1 × 1 e no 2 × 2; testes de máquina não comprovam equivalência entre jogadores humanos.
+Execute `npm test`. Os testes cobrem regras, todos os kits de habilidades, produção, economia, navegação, IA, rede, privacidade da visão, comandos e renderização. Resultados e limites da validação desta entrega estão em `VALIDACAO-1.0.0.md`. A meta de partidas próximas de dez minutos exige acompanhamento separado no 1 × 1 e no 2 × 2; testes de máquina não comprovam equivalência entre jogadores humanos.

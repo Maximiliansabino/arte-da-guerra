@@ -71,12 +71,20 @@ export const server=http.createServer(async(req,res)=>{
    '/rules.js':'rules.js','/legends.js':'legends.js','/match-config.js':'match-config.js','/ai-config.js':'ai-config.js',
    '/hero-roster.js':'hero-roster.js','/camp-config.js':'camp-config.js',
    '/tribes-data.js':'tribes-data.js','/tribe-art.js':'tribe-art.js','/tooltips.js':'tooltips.js','/portraits.js':'portraits.js',
+   '/asset-manifest.js':'asset-manifest.js','/sprite-atlas.js':'sprite-atlas.js','/painted-art.js':'painted-art.js',
+   '/environment-art.js':'environment-art.js','/fx-language.js':'fx-language.js',
    '/recruitment.js':'recruitment.js','/hero-guide.js':'hero-guide.js',
    '/combat-effects.js':'combat-effects.js','/spell-effects.js':'spell-effects.js',
    '/scene-art.js':'scene-art.js','/neutral-art.js':'neutral-art.js','/audio.js':'audio.js','/style.css':'style.css',
    '/assets/hero-atlas.png':'assets/hero-atlas.png',
    '/assets/mercenary-atlas-v07.png':'assets/mercenary-atlas-v07.png',
-   '/assets/fronteira-keyart.png':'assets/fronteira-keyart.png'
+   '/assets/fronteira-keyart.png':'assets/fronteira-keyart.png',
+   '/assets/war-cover-v100.png':'assets/war-cover-v100.png',
+   '/assets/v100/fort-units.png':'assets/v100/fort-units.png','/assets/v100/fort-buildings.png':'assets/v100/fort-buildings.png',
+   '/assets/v100/forj-units.png':'assets/v100/forj-units.png','/assets/v100/forj-buildings.png':'assets/v100/forj-buildings.png',
+   '/assets/v100/vent-units.png':'assets/v100/vent-units.png','/assets/v100/vent-buildings.png':'assets/v100/vent-buildings.png',
+   '/assets/v100/puls-units.png':'assets/v100/puls-units.png','/assets/v100/puls-buildings.png':'assets/v100/puls-buildings.png',
+   '/assets/v100/environment.png':'assets/v100/environment.png'
   };
   const file=Object.hasOwn(files,url.pathname)?files[url.pathname]:null;
   if(req.method!=='GET'||!file)return json(res,404,{error:'Não encontrado.'});

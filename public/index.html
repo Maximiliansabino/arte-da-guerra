@@ -3,7 +3,7 @@
 <head>
  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
  <meta name="theme-color" content="#101721"><meta name="description" content="Estratégia em tempo real entre amigos. Quatro tribos originais, 24 heróis e decisões que mudam a batalha.">
- <title>Arte da Guerra · 0.9.0</title><link rel="stylesheet" href="/style.css">
+ <title>Arte da Guerra · 1.0.0</title><link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header>
@@ -13,21 +13,18 @@
 </header>
 <main>
 <section id="welcome">
- <div class="welcome-art" aria-hidden="true"><div class="strategy-grid"></div></div>
+ <div class="welcome-art" aria-hidden="true"></div>
  <div class="intro">
-  <div class="eyebrow"><span class="ornament">◇</span> ESTRATÉGIA EM TEMPO REAL · 0.9.0</div>
-  <h1>Quatro tribos.<br><em>Sua estratégia.</em></h1>
+  <div class="eyebrow"><span class="ornament">◇</span> ESTRATÉGIA EM TEMPO REAL · 1.0.0</div>
+  <h1>ARTE DA<br><em>GUERRA</em></h1>
+  <p class="intro-manifest">Quatro tribos. Sua estratégia.</p>
   <p>Construa sua base. Escolha seu herói. Mude o rumo da batalha.<br>Da linha de frente ao cerco, cada decisão abre um caminho.</p>
   <div class="features"><span><b>24</b> heróis</span><span><b>72</b> habilidades</span><span><b>4</b> exclusivos</span></div>
   <div class="mode-story"><span>SOLO CONTRA IA</span><i>·</i><span>DUPLAS 2 × 2</span><i>·</i><span>AMIGOS × MÁQUINAS</span></div>
-  <div class="war-table" aria-hidden="true"><svg viewBox="0 0 620 180" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="board-light" x1="310" y1="0" x2="310" y2="180" gradientUnits="userSpaceOnUse"><stop stop-color="#24354a"/><stop offset="1" stop-color="#101b2b"/></linearGradient></defs><path d="M310 10 604 90 310 170 16 90Z" fill="url(#board-light)" stroke="#65758b" stroke-opacity=".45"/><path d="m82 90 228-61 228 61-228 61Z" stroke="#7891ad" stroke-opacity=".2"/><path d="m155 49 310 82M155 131l310-82M310 10v160M16 90h588" stroke="#8fabc4" stroke-opacity=".2"/><path d="m192 88 86 6 66-35m-37 60 81-22" stroke="#d9bb83" stroke-width="2" stroke-dasharray="5 7"/><path d="m330 59 14 0-5 13m37-35 13 0-3 12" stroke="#d9bb83" stroke-width="2"/>
-  <g transform="translate(145 69)" stroke="#a4c6ee" stroke-width="2"><path d="M-27 15V-11h12v-8H-4v8H7v-8h11v8h12v26L1 24Z" fill="#365979"/><path d="M-27-11 1-23l29 12M1-23V24M-7 19V5l9-4 9 4v14"/><path d="M-37 24 1 35l41-12" opacity=".45"/></g>
-  <g transform="translate(445 69)" stroke="#e2ae7d" stroke-width="2"><path d="M-31 7-15-5h31L31 7v17L0 33l-31-9Z" fill="#69503d"/><path d="M-15-5v-22h12v22M12-5v-30h12V2M-31 7 0 17 31 7M0 17v16"/><path d="m-19 18 9 3m20 0 9-3" stroke="#f6cc88" stroke-width="4"/></g>
-  <g transform="translate(260 128)" stroke="#86d5ce" stroke-width="2"><path d="m-24-13 25-24 23 24L1 0Z" fill="#395e65"/><path d="M1-37V12m-25-25V3L1 12 24 3v-16M1-37l33 4-24 6"/><path d="m-40 9 13-4m51 6 19-6" opacity=".5"/></g>
-  <g transform="translate(345 48)" stroke="#bf9eea" stroke-width="2"><path d="m0-30 20 13v21L0 17-20 4v-21Z" fill="#51436c"/><ellipse cy="-7" rx="27" ry="8"/><path d="M0-30V17m-20-34L0-4l20-13"/><circle cy="-7" r="4" fill="#d7c1f0"/></g><g fill="#b4c6d9"><circle cx="218" cy="89" r="4"/><circle cx="229" cy="91" r="4"/><circle cx="240" cy="94" r="4"/><circle cx="377" cy="100" r="4"/><circle cx="389" cy="97" r="4"/></g></svg></div>
+
  </div>
  <div class="entry">
-  <span class="entry-number">01 / PREPARAÇÃO</span><div class="eyebrow">ENTRE NO CAMPO</div><h2>A batalha começa aqui.</h2>
+  <span class="entry-number">VERSÃO 1.0.0</span><div class="eyebrow">ENTRE NO CAMPO</div><h2>A batalha começa aqui.</h2>
   <label for="name">Nome do comandante</label><input id="name" maxlength="24" placeholder="Como seus amigos te chamam?" autocomplete="nickname">
   <button class="primary" id="create">Criar sala com amigos <span>↗</span></button>
   <div class="divider">JÁ RECEBEU UM CONVITE?</div>
@@ -75,7 +72,7 @@
 <div id="toast" role="status" hidden></div>
 <dialog id="selection-info" aria-labelledby="selection-info-title"><button id="selection-info-close" class="close" aria-label="Fechar atributos">✕</button><h2 id="selection-info-title">Sua seleção</h2><p id="selection-info-detail"></p></dialog>
 <dialog id="instructions">
- <button id="closehelp" class="close" aria-label="Fechar manual">✕</button><div class="eyebrow">MANUAL DA FRONTEIRA</div><h2>Sua companhia. Sua estratégia.</h2>
+ <button id="closehelp" class="close" aria-label="Fechar manual">✕</button><div class="eyebrow">MANUAL DE COMBATE</div><h2>Sua companhia. Sua estratégia.</h2>
  <p>Um jogo original de estratégia em tempo real. Fortaleza, Forja, Vento e Pulso são tribos fictícias, com heróis, construções e estilos de combate próprios.</p>
  <ol>
   <li><b>Escolha a partida.</b> Jogue todos contra todos, em duplas de 2 contra 2, em companhia de até quatro amigos contra uma a quatro máquinas ou treine sozinho contra uma máquina. O anfitrião escolhe entre três mapas e a estratégia das máquinas: fácil, normal ou difícil. As posições iniciais são sorteadas a cada partida, mantendo aliados do mesmo lado nos modos de equipe. Os quadrados vazios no minimapa marcam as posições iniciais conhecidas por todos.</li>

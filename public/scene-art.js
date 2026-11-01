@@ -2,14 +2,15 @@ import {HERO_TYPES,HEROES,STATS} from './rules.js';
 import {getMap} from './terrain.js';
 import {drawNeutral} from './neutral-art.js';
 import {drawTribeHero,drawTribeUnit,drawTribeBuilding,CharacterMotion,tribeStyle,isolateCanvas} from './tribe-art.js';
+import {drawPaintedUnit,drawPaintedBuilding} from './painted-art.js';
 const TAU=Math.PI*2;
 const hash=n=>{const value=Math.sin(n*127.1+311.7)*43758.5453;return value-Math.floor(value);};
 function polygon(ctx,points,fill,stroke){ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.stroke();}}
 function ellipse(ctx,x,y,rx,ry,fill){ctx.beginPath();ctx.ellipse(x,y,rx,ry,0,0,TAU);ctx.fillStyle=fill;ctx.fill();}
 function line(ctx,x,y,tx,ty,color,width=2){ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(tx,ty);ctx.stroke();}
 function sparkle(ctx,x,y,r,color){ctx.fillStyle=color;polygon(ctx,[[x,y-r],[x+r*.25,y-r*.25],[x+r,y],[x+r*.25,y+r*.25],[x,y+r],[x-r*.25,y+r*.25],[x-r,y],[x-r*.25,y-r*.25]],color);}
-export const drawHero=drawTribeHero;
-export const drawBuilding=drawTribeBuilding;
+export function drawHero(ctx,e,color,now=0,options={}){return HEROES[e?.type]&&(drawPaintedUnit(ctx,e,color,now,options)||drawTribeHero(ctx,e,color,now,options))||false;}
+export function drawBuilding(ctx,e,color,now=0,options={}){return drawPaintedBuilding(ctx,e,color,now,options)||drawTribeBuilding(ctx,e,color,now,options);}
 const finitePoint=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
 
 // Cosmetic state comes from observed positions and server-confirmed hits. A move
@@ -107,6 +108,7 @@ function drawSiege(ctx,e,color,pose={}){
 
 export function drawUnit(ctx,e,color,now=0,options={}){
  if(!finitePoint(e))return false;
+ if(drawPaintedUnit(ctx,e,color,now,options))return true;
  if(HEROES[e.type])return drawTribeHero(ctx,e,color,now,options);
  if(e.type==='siege'){drawSiege(ctx,e,color,{...options.siegePose,opacity:options.opacity});return true;}
  return drawTribeUnit(ctx,e,color,now,options);

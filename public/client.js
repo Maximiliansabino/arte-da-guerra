@@ -10,6 +10,8 @@ import {FACTIONS, ABILITIES, ITEMS, RESEARCH, HERO_ABILITIES, HERO_XP, researchC
 import {MODES, TEAM_COLORS} from './match-config.js';
 import {DIFFICULTIES, DEFAULT_DIFFICULTY} from './ai-config.js';
 import {createSceneArt} from './scene-art.js';
+import {hitTestPainted, paintedHealthTop} from './painted-art.js';
+import {createEnvironmentArt} from './environment-art.js';
 import {drawNeutral as drawMercenary, NEUTRAL_ART} from './neutral-art.js';
 import {createSpellEffects} from './spell-effects.js';
 import {createAudio} from './audio.js';
@@ -26,6 +28,7 @@ const $=s=>document.querySelector(s), canvas=$('#map');
 let ctx=canvas.getContext('2d');
 const colors = TEAM_COLORS;
 const sceneArt = createSceneArt(), spellEffects = createSpellEffects(), audio = createAudio();
+const environmentArt=typeof createEnvironmentArt==='function'?createEnvironmentArt():null;
 let spellTarget = null, attackTarget = false, rallyTarget = null, workTarget = null, rosterKey = '', idleKey = '';
 let lastSoundId = 0, lastSpellSoundId = 0, soundRoom = null;
 let heroNoticeRoom = null, lastHeroCapacity = null;
@@ -39,6 +42,7 @@ const labels = new Proxy(LABELS,{get:(base,type)=>entityName(type,mine()?.factio
 const nameOf=e=>entityName(e,e?.faction || mine()?.faction || 'fort');
 const icons = ICONS;
 const combatEffects = createCombatEffects();
+combatEffects.setReducedMotion?.(reducedMotion);
 let builderId = null;
 let session=null,state=null,selected=new Set(),camera={x:900,y:900},zoom=.65,keys=new Set(),pointer=null,drag=null,building=null,toastTimer,reconnecting=false,streamController=null;
 let cw=1000,ch=600,lastFrame=performance.now(),minimap=null,marker=null;
@@ -141,7 +145,7 @@ async function recruit(unit, ids) {
 }
 function receiveEffects() {
  const now = performance.now();
- combatEffects.ingest(state, now); spellEffects.ingest(state, now);sceneArt.ingest?.(state,now);
+ combatEffects.ingest(state, now); spellEffects.setViewer?.(session?.id); spellEffects.ingest(state, now);sceneArt.ingest?.(state,now);environmentArt?.ingest(state);
  if (soundRoom !== state.code) {lastSoundId = lastSpellSoundId = 0; soundRoom = state.code;}
  for (const event of state.combatEvents || []) {
   if (event.id > lastSoundId && state.time - event.at < .35) audio.attack(event);
@@ -758,6 +762,7 @@ const world=p=>({x:camera.x+(p.x-cw/2)/zoom,y:camera.y+(p.y-ch/2)/zoom});
 const local=e=>{const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
 function entityContains(e,p){
  if(Math.hypot(e.x-p.x,e.y-p.y)<(BUILDING_TYPES.includes(e.type)?42:e.type==='colossus'?40:22))return true;
+ if(hitTestPainted(e,p.x,p.y))return true;
  const art=NEUTRAL_ART[e.type];if(!art)return false;
  // The image extends above its ground position. Exclude transparent cell edges
  // while allowing a click on the visible head, chest or original foot circle.
@@ -766,7 +771,7 @@ function entityContains(e,p){
  return ((p.x-e.x)/rx)**2+((p.y-center)/ry)**2<=1;
 }
 function entityAt(p){return state?.entities.filter(e=>entityContains(e,p)).sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];}
-function resourceAt(point,type=null){return state?.resources.filter(resource=>resource.amount>0&&(!type||resource.type===type)&&Math.hypot(resource.x-point.x,resource.y-point.y)<35).sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y))[0];}
+function resourceAt(point,type=null){return state?.resources.filter(resource=>resource.amount>0&&(!type||resource.type===type)&&Math.hypot(resource.x-point.x,resource.y-point.y)<35).sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y))[0] || environmentArt?.resourceAt(point,type);}
 function rallyOrder(id,point){const resource=resourceAt(point);return {type:'rally',ids:[id],...(resource?{x:resource.x,y:resource.y,target:resource.id}:point)};}
 $('#hud-minimap').oncontextmenu=e=>e.preventDefault();
 $('#hud-minimap').onpointerdown=event=>{
@@ -971,7 +976,7 @@ function drawBuildZones() {
 }
 function drawBuildGhost() {
  const point = world(pointer), reason = buildError(point), color = reason ? '#ff9c86' : '#b5efb5';
- ctx.save();ctx.globalAlpha = .6;buildingArt({...point,type:building},color);ctx.restore();
+ ctx.save();ctx.globalAlpha = .6;buildingArt({...point,type:building,faction:mine()?.faction},color);ctx.restore();
  ctx.strokeStyle = color;ctx.lineWidth = 2/zoom;
  ctx.beginPath();ctx.ellipse(point.x,point.y + 10,51,27,0,0,Math.PI*2);ctx.stroke();
  $('#buildhint').classList.toggle('invalid', !!reason);
@@ -1077,7 +1082,8 @@ function drawTerrain(map) {
  drawMapWater(map);
  ctx.lineWidth=1;
  for(const o of map.obstacles){
-  if(o.type==='tree'){tree(o.x,o.y);continue;}
+  if(o.type==='tree'){if(environmentArt)environmentArt.drawTree(ctx,o,{obstacle:true});else tree(o.x,o.y);continue;}
+  if(o.type==='rock'&&environmentArt){environmentArt.drawRock(ctx,o);continue;}
   ellipse(o.x+3,o.y+8,o.r+4,o.r*.65,'#162b3066');
   if(o.type==='crystal'){
    polygon([[o.x-o.r,o.y+4],[o.x-o.r*.58,o.y-o.r*.75],[o.x-3,o.y-4],[o.x+o.r*.45,o.y-o.r*1.2],[o.x+o.r,o.y],[o.x+o.r*.3,o.y+o.r*.5]],'#7b90b9','#bce4eb');
@@ -1177,21 +1183,20 @@ function drawMinimap() {
 }
 function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;const speed=480*dt/zoom,modalOpen=$('#instructions').open||$('#hero-guide').open||$('#selection-info').open;if(modalOpen){keys.clear();pointer=null;drag=null;}if(!drag&&!modalOpen){if(keys.has('arrowleft')||pointer?.x<12)camera.x-=speed;if(keys.has('arrowright')||pointer?.x>cw-12)camera.x+=speed;if(keys.has('arrowup')||pointer?.y<12)camera.y-=speed;if(keys.has('arrowdown')||pointer?.y>ch-12)camera.y+=speed;}clampCamera();
  ctx.clearRect(0,0,cw,ch);ctx.fillStyle='#12291f';ctx.fillRect(0,0,cw,ch);ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(zoom,zoom);ctx.translate(-camera.x,-camera.y);ctx.fillStyle=getMap(state?.mapId||DEFAULT_MAP).theme.ground;ctx.fillRect(0,0,1800,1800);
- // A deterministic, original landscape: meadow patches, trails, stream and ruins.
- for(let i=0;i<550;i++){const x=hash(i)*1800,y=hash(i+700)*1800;ellipse(x,y,hash(i+1)*65+8,hash(i+2)*30+5,i%3?'#45634340':'#203f3135');}
- ctx.lineCap='round';ctx.strokeStyle='#64734a66';ctx.lineWidth=90;ctx.beginPath();ctx.moveTo(220,220);ctx.bezierCurveTo(600,700,1300,900,1580,1580);ctx.moveTo(1580,220);ctx.bezierCurveTo(950,650,700,1200,220,1580);ctx.stroke();
+ // Cached painted ground keeps fine texture out of the per-frame draw loop.
+ environmentArt?.drawGround(ctx,getMap(state?.mapId||DEFAULT_MAP));
  if(state?.mapId){drawTerrain(getMap(state.mapId));for(const camp of state.camps||[])drawCamp(camp);}
 
- for(let i=0;i<900;i++){const x=hash(i+1500)*1800,y=hash(i+3000)*1800;ctx.fillStyle=i%8===0?'#d3bc7255':'#8eaa5b44';ctx.fillRect(x,y,2,3);}
- for(let i=0;i<80;i++){const x=hash(i+880)*1800,y=hash(i+940)*1800;if(x<80||x>1720||y<80||y>1720)tree(x,y);}
+ for(let i=0;i<80;i++){const x=hash(i+880)*1800,y=hash(i+940)*1800;if(x<80||x>1720||y<80||y>1720){if(environmentArt)environmentArt.drawTree(ctx,{x,y},{obstacle:true});else tree(x,y);}}
  sceneArt.drawAmbient(ctx,state,now);
- for(const res of state?.resources||[])if(res.amount>0){if(res.type==='wood')tree(res.x,res.y);else crystal(res.x,res.y);}
+ if(environmentArt)environmentArt.drawResources(ctx,now,{reducedMotion});
+ else for(const res of state?.resources||[])if(res.amount>0){if(res.type==='wood')tree(res.x,res.y);else crystal(res.x,res.y);}
  if(building && state) drawBuildZones();
  drawBossWarnings();
  drawLootDrops();
  const entities=(state?.entities||[]).slice().sort((a,b)=>a.y-b.y);
  for(const e of entities){const p=state.players.find(p=>p.id===e.owner)||{slot:-1,name:'Mercenário neutro'},col=colors[p.slot]||CAMP_TYPES[e.neutralTier]?.color||'#d4a478';const isBuilding=BUILDING_TYPES.includes(e.type);if(selected.has(e.id)){ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(e.x,e.y+7,isBuilding?53:e.boss?44:e.type==='siege'?34:18,isBuilding?26:e.boss?22:e.type==='siege'?17:10,0,0,Math.PI*2);ctx.stroke();}ctx.save();try{if(isBuilding)buildingArt(e,col);else if(NEUTRAL_TYPES.includes(e.type))drawNeutral(e,now);else unitArt(e,col,now);}finally{ctx.restore();}drawEntityProgress(e,isBuilding,col,now);
- if(e.hp<e.maxHp||selected.has(e.id)||HEROES[e.type]||e.boss){const art=NEUTRAL_ART[e.type],width=isBuilding?65:e.boss?80:HEROES[e.type]?42:29,top=art?e.y+12-art.size*art.foot-6:e.y-(isBuilding?85:HEROES[e.type]?71:e.type==='siege'?62:31);ctx.fillStyle='#0e2019';ctx.fillRect(e.x-width/2-1,top-1,width+2,6);ctx.fillStyle=e.hp/e.maxHp>.35?col:'#e48a69';ctx.fillRect(e.x-width/2,top,width*Math.max(0,e.hp/e.maxHp),4);}
+ if(e.hp<e.maxHp||selected.has(e.id)||HEROES[e.type]||e.boss){const art=NEUTRAL_ART[e.type],width=isBuilding?65:e.boss?80:HEROES[e.type]?42:29,top=art?e.y+12-art.size*art.foot-6:paintedHealthTop(e);ctx.fillStyle='#0e2019';ctx.fillRect(e.x-width/2-1,top-1,width+2,6);ctx.fillStyle=e.hp/e.maxHp>.35?col:'#e48a69';ctx.fillRect(e.x-width/2,top,width*Math.max(0,e.hp/e.maxHp),4);}
  if(e.type==='base'){ctx.font='12px Segoe UI';ctx.textAlign='center';ctx.fillStyle=col;ctx.fillText(p.name,e.x,e.y+65);}
  drawWorkActivity(e,now);drawRallyFlag(e,col,now);
  if(e.queue.length){ctx.fillStyle='#d5bd73';ctx.fillRect(e.x-25,e.y+49,50*Math.min(1,e.progress/trainDuration(e.queue[0],e)),3);
