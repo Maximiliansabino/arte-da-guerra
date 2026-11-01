@@ -1,22 +1,26 @@
-ARTE DA GUERRA 0.9.0
+ARTE DA GUERRA 1.0.0
 
-1. Extraia TODO o ZIP para uma pasta.
-2. Instale Node.js 22 ou superior, se necessário: https://nodejs.org/
+1. Guarde a pasta anterior e extraia TODO o ZIP para uma pasta separada.
+2. Reutilize Node.js 22 ou superior. Instale/atualize só se necessário: https://nodejs.org/
 3. No Windows, abra INICIAR-JOGO.cmd. No macOS/Linux, execute npm start.
 4. Abra http://localhost:3000 no navegador e mantenha o servidor ligado.
 5. Escolha sua tribo e treine contra a máquina ou crie uma sala com amigos.
 
-NOVIDADES
-Fortaleza, Forja, Vento e Pulso: seis heróis por tribo, 72 habilidades,
-nomes e desenhos próprios, quatro exclusivos da Oficina III e itens raros.
-O nome é Arte da Guerra; os termos da interface são tribo e grupo.
-Passe o mouse nos botões para conhecer o efeito, custo e requisito.
+NOVIDADES VISUAIS 1.0.0
+Capa ilustrada, tropas e heróis com imagens próprias por tribo,
+construções em três estágios e novas minas de ouro e recursos.
+Cura dourada, proteção azul, dano laranja, controle violeta,
+movimento turquesa e ocultação cinza, com formas e animações próprias.
+Balões legíveis: largura estável, texto organizado e posição dentro da janela.
+Passe o mouse ou use o foco do teclado nos botões para ler efeito, custo e requisito.
+
+CONTROLES E PROGRESSÃO
 A R só libera no nível 5; o Colosso concede a segunda vaga de herói.
 Q/W/R: herói ativo; E: exclusivo; Alt+1/2/3: itens; Alt+4: item raro.
-Ctrl+1 a 9 salva grupos de até 12 unidades; o número seleciona o grupo.
+Ctrl+1 a 9 salva grupos com toda a seleção própria; o número seleciona o grupo.
 
 ATUALIZAÇÃO DO REPOSITÓRIO
-Leia APLICAR-0.9.0.txt antes de integrar ao trabalho do seu amigo.
+Leia APLICAR-1.0.0.txt antes de integrar ao trabalho do seu amigo.
 Não substitua às cegas arquivos de uma versão posterior do GitHub.
 
 AMIGOS
@@ -25,4 +29,4 @@ convidado. Consulte README.md para IP local, ALLOWED_HOSTS e hospedagem.
 O ZIP não publica automaticamente o jogo na internet.
 
 VALIDAÇÃO
-Consulte VALIDACAO-0.9.0.md para testes executados e limites observados.
+Consulte VALIDACAO-1.0.0.md para testes executados e limites observados.

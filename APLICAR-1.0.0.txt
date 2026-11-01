@@ -1,0 +1,50 @@
+ARTE DA GUERRA 1.0.0 — EXECUÇÃO E INTEGRAÇÃO
+
+BASE DESTA ENTREGA
+Repositório: https://github.com/Maximiliansabino/arte-da-guerra
+Branch consultada: main
+Commit: 2cb64a5ea35fbab75cf7bfc338e03dab347cdb63
+A importação da versão 0.9.0 feita pelo colaborador foi preservada.
+O ZIP contém o jogo completo e arte-da-guerra-1.0.0.patch, relativo à base acima.
+
+JOGAR SEM ALTERAR SUA CÓPIA ANTERIOR
+1. Guarde uma cópia da pasta anterior, incluindo alterações ainda não enviadas
+   ao GitHub. Extraia TODO o ZIP em uma pasta separada.
+2. Reutilize o Node.js instalado, se for 22 ou superior. Não é necessário
+   reinstalar nem baixar dependências: o servidor usa módulos nativos.
+3. No Windows, abra INICIAR-JOGO.cmd. No macOS/Linux, execute npm start
+   dentro da nova pasta. Abra http://localhost:3000 no navegador.
+4. Se outro servidor já ocupa a porta 3000, encerre-o antes de iniciar o novo.
+   Reiniciar o servidor encerra as partidas que estavam em andamento.
+5. Confira a versão 1.0.0 na entrada/lobby. Veja LEIA-PRIMEIRO.txt e README.md
+   para convidar os amigos ao mesmo servidor.
+
+INCORPORAR AO REPOSITÓRIO COMPARTILHADO
+Não copie a pasta inteira sobre o trabalho atual do colaborador.
+
+1. Execute git status. Preserve alterações locais e arquivos não rastreados
+   com backup ou commit antes da integração; não descarte o trabalho de ninguém.
+2. Execute git fetch origin e consulte o histórico atualizado. Com a branch main
+   limpa e selecionada, use git pull --ff-only para receber as alterações.
+   Se houver divergência, resolva a integração sem forçar a substituição.
+3. Crie uma branch de integração a partir da versão atual. Se o GitHub avançou
+   depois do commit informado acima, compare as mudanças de ambas as versões.
+4. Confira e depois aplique o patch. Exemplo, a partir da raiz do repositório,
+   quando o arquivo patch estiver na pasta imediatamente acima:
+
+   git apply --check ../arte-da-guerra-1.0.0.patch
+   git apply ../arte-da-guerra-1.0.0.patch
+   npm test
+
+   Ajuste o caminho para onde extraiu o patch. Só execute a segunda linha
+   depois que a verificação terminar sem erro. Se houver conflito, compare
+   os arquivos e integre as duas mudanças; não force a aplicação.
+5. Revise o resultado com o colaborador e teste uma partida antes de atualizar
+   a hospedagem. Leia VALIDACAO-1.0.0.md para o que foi verificado nesta entrega.
+
+ARQUIVOS E PUBLICAÇÃO
+As instruções desta entrega são APLICAR-1.0.0.txt e VALIDACAO-1.0.0.md.
+Documentos 0.9.0 eventualmente presentes pertencem à entrega anterior.
+O ZIP não publica nem altera automaticamente a hospedagem do jogo.
+Salas e partidas ficam na memória do servidor e não são transferidas pelo ZIP.
+O pacote não inclui credenciais de hospedagem ou de GitHub.
