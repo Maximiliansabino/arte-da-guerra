@@ -119,7 +119,7 @@ $('#again').onclick=leaveRoom;
 $('#leave').onclick=()=>{if(state?.phase!=='playing'||confirm('Sair elimina suas unidades desta partida. Continuar?'))leaveRoom();};
 window.onpagehide=()=>{session=null;streamController?.abort();};
 $('#surrender').onclick=()=>{if(state?.phase==='playing'&&confirm('Render-se elimina suas unidades. Deseja continuar?'))send({type:'surrender'});};
-function showGame(){roomBrowser?.setActive(false);$('#welcome').hidden=true;$('#game').hidden=false;$('#sitefooter').hidden=true;$('#roomcode').textContent=session.code;resize();connect();}
+function showGame(){roomBrowser?.setActive(false);$('#game').classList.add('lobby-phase');$('#welcome').hidden=true;$('#game').hidden=false;$('#sitefooter').hidden=true;$('#roomcode').textContent=session.code;resize();connect();}
 async function connect(){if(reconnecting)return;reconnecting=true;let first=true;
  while(session){try{streamController=new AbortController();const res=await fetch(`/api/events?room=${session.code}`,{headers:{Authorization:`Bearer ${session.token}`},signal:streamController.signal});if(!res.ok){sessionStorage.removeItem('arte-da-guerra-session');session=null;$('#game').hidden=true;$('#welcome').hidden=false;$('#sitefooter').hidden=false;roomBrowser?.setActive(true);toast('A sala foi encerrada. Crie uma nova ou entre por um convite.');break;}$('#connection').textContent='● Servidor conectado · 10 atualizações/s';const reader=res.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let idx;while((idx=buffer.indexOf('\n\n'))>=0){const msg=buffer.slice(0,idx);buffer=buffer.slice(idx+2);if(msg.startsWith('data: ')){state=JSON.parse(msg.slice(6));receiveEffects();if(first&&state.entities.length){home();first=false;}updateUI();}}} }catch{}
  $('#connection').textContent='◌ Conexão interrompida · reconectando…';await new Promise(r=>setTimeout(r,1500));
@@ -764,7 +764,18 @@ function clampCamera() {
   camera[axis]=half>=WORLD/2?WORLD/2:Math.max(half,Math.min(WORLD-half,camera[axis]));
  }
 }
-function resize(){const rect=canvas.getBoundingClientRect();cw=rect.width;ch=rect.height;const d=touchPixelRatio(devicePixelRatio||1,touchControls?.active,touchControls?.light);canvas.width=cw*d;canvas.height=ch*d;ctx.setTransform(d,0,0,d,0,0);clampCamera();}
+function resize() {
+ const rect=canvas.getBoundingClientRect();
+ cw=rect.width;
+ ch=rect.height;
+ if (!cw || !ch || !ctx) return;
+ const ratio=touchPixelRatio(devicePixelRatio||1,touchControls?.active,touchControls?.light);
+ const width=Math.round(cw*ratio), height=Math.round(ch*ratio);
+ if (canvas.width!==width) canvas.width=width;
+ if (canvas.height!==height) canvas.height=height;
+ ctx.setTransform(ratio,0,0,ratio,0,0);
+ clampCamera();
+}
 new ResizeObserver(resize).observe(canvas);
 const world=p=>({x:camera.x+(p.x-cw/2)/zoom,y:camera.y+(p.y-ch/2)/zoom});
 const local=e=>{const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
@@ -1222,7 +1233,15 @@ function drawMinimap() {
  ctx.strokeStyle='#e8e6b8';ctx.lineWidth=1;ctx.strokeRect(x+(camera.x-cw/2/zoom)/WORLD*s,y+(camera.y-ch/2/zoom)/WORLD*s,cw/zoom/WORLD*s,ch/zoom/WORLD*s);
  }finally{ctx=previousContext;}
 }
-function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;const speed=480*dt/zoom,modalOpen=anyDialogOpen();if(modalOpen){keys.clear();pointer=null;drag=null;}if(!drag&&!modalOpen){if(keys.has('arrowleft')||(!touchControls?.active&&pointer?.x<12))camera.x-=speed;if(keys.has('arrowright')||(!touchControls?.active&&pointer?.x>cw-12))camera.x+=speed;if(keys.has('arrowup')||(!touchControls?.active&&pointer?.y<12))camera.y-=speed;if(keys.has('arrowdown')||(!touchControls?.active&&pointer?.y>ch-12))camera.y+=speed;}clampCamera();
+function render(now){
+ requestAnimationFrame(render);
+ // The lobby is HTML. Drawing terrain and loading sprite atlases here only
+ // competes with the room interface for memory and time on mobile devices.
+ if (!state || state.phase==='lobby' || !ctx || !cw || !ch) {
+  lastFrame=now;
+  return;
+ }
+ const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;const speed=480*dt/zoom,modalOpen=anyDialogOpen();if(modalOpen){keys.clear();pointer=null;drag=null;}if(!drag&&!modalOpen){if(keys.has('arrowleft')||(!touchControls?.active&&pointer?.x<12))camera.x-=speed;if(keys.has('arrowright')||(!touchControls?.active&&pointer?.x>cw-12))camera.x+=speed;if(keys.has('arrowup')||(!touchControls?.active&&pointer?.y<12))camera.y-=speed;if(keys.has('arrowdown')||(!touchControls?.active&&pointer?.y>ch-12))camera.y+=speed;}clampCamera();
  ctx.clearRect(0,0,cw,ch);ctx.fillStyle='#12291f';ctx.fillRect(0,0,cw,ch);ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(zoom,zoom);ctx.translate(-camera.x,-camera.y);ctx.fillStyle=getMap(state?.mapId||DEFAULT_MAP).theme.ground;ctx.fillRect(0,0,1800,1800);
  // Cached painted ground keeps fine texture out of the per-frame draw loop.
  environmentArt?.drawGround(ctx,getMap(state?.mapId||DEFAULT_MAP));
@@ -1255,7 +1274,7 @@ function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;c
  ctx.restore();if(drag&&!drag.pan){ctx.fillStyle='#bad99822';ctx.strokeStyle='#c5dfab';ctx.fillRect(drag.from.x,drag.from.y,drag.to.x-drag.from.x,drag.to.y-drag.from.y);ctx.strokeRect(drag.from.x,drag.from.y,drag.to.x-drag.from.x,drag.to.y-drag.from.y);}
  if(state){drawMinimap();
  if(state.phase==='playing'){ctx.textAlign='left';ctx.font='10px Segoe UI';state.players.forEach((p,i)=>{ctx.fillStyle=colors[p.slot];ctx.fillText(`${p.defeated?'×':'●'} ${p.name} · Time ${p.team+1}`,18,ch-18-(state.players.length-i-1)*18);});}}
- requestAnimationFrame(render);}
+}
 requestAnimationFrame(render);if(saved&&(!invite||invite===saved.code)){session=saved;showGame();}
 
 roomBrowser?.setActive(!session);
