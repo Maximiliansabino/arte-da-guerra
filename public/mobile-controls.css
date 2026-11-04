@@ -87,3 +87,10 @@ body.touch-active #game .lobby-settings select,body.touch-active #game .lobby bu
  body.touch-active #game .economy b{font-size:12px}
  body.touch-active #game .economy>span{font-size:9px}
 }
+
+/* Keep the lobby available while the first room snapshot arrives. */
+@supports not (height: 100dvh) {
+ #game:not([hidden]){height:100vh}
+}
+#game.lobby-phase .arena{background:#102132}
+#game.lobby-phase #map{visibility:hidden}
