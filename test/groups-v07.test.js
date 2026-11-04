@@ -1,3 +1,6 @@
+import {initRoomBrowser} from '../public/room-browser.js';
+import {createMapArt} from '../public/map-art.js';
+import {initTouchControls, touchPixelRatio} from '../public/touch-controls.js';
 import * as catalog from '../public/tribes-data.js';
 import {tooltipText} from '../public/tooltips.js';
 import test from 'node:test';
@@ -82,7 +85,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    hitTestPainted,paintedHealthTop,
+    hitTestPainted,paintedHealthTop,initTouchControls,touchPixelRatio,initRoomBrowser,createMapArt,
     ...catalog, tooltipText, initTooltips:()=>({}), heroPortrait:()=>new Element('canvas'), ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), NEUTRAL_ART, drawMercenary:()=>false, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
@@ -91,7 +94,7 @@ function harness(initial = fixture()) {
     setTimeout: callback => {timers.push(callback); return timers.length;}, clearTimeout() {},
     document: {querySelector(selector) {assert.ok(elements.has(selector), `Missing actual HTML element ${selector}`); return elements.get(selector);}, createElement: tag => new Element(tag)},
     window: {}, navigator: {}, confirm: () => false,
-    fetch: async (url, options) => {requests.push({url, options, body: JSON.parse(options.body)}); return {ok: true, json: async () => ({ok: true})};},
+    fetch: async (url, options) => {if(url==='/api/rooms')return {ok:true,json:async()=>({rooms:[]})};requests.push({url, options, body: JSON.parse(options.body)}); return {ok: true, json: async () => ({ok: true})};},
     initial
   };
   const context = vm.createContext(sandbox);

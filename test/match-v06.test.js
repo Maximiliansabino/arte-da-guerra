@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRoom,addCommander,configureMatch,beginMatch,assignStartingPositions,startingPoint,snapshotFor} from '../match.js';
-import {MAPS,terrainBlocked} from '../public/terrain.js';
+import {MAPS,terrainBlocked,getMap} from '../public/terrain.js';
 import {STATS} from '../public/rules.js';
 
 const noShuffle=()=>.999999;
@@ -56,24 +56,27 @@ test('posições: duplas e cooperativo sorteiam lado e posições mantendo aliad
     assert.notEqual(first.find(p=>p.slot===0).x,second.find(p=>p.slot===0).x,`${mode}: anfitrião pode cair em qualquer lado`);
     for(const positions of [first,second]){
       assert.equal(new Set(positions.map(p=>`${p.x},${p.y}`)).size,room.players.length);
-      const teamSides=[];
+      const capacity=mode==='coop'?12:8;
       for(const team of [0,1]){
-        const sides=new Set(room.players.filter(p=>p.team===team).map(p=>positions.find(s=>s.slot===p.slot).x));
-        assert.equal(sides.size,1);teamSides.push([...sides][0]);
+        const sites=room.players.filter(p=>p.team===team).map(p=>positions.find(s=>s.slot===p.slot).site);
+        assert.ok(sites.some(first=>sites.every(site=>(site-first+capacity)%capacity<sites.length)),'aliados ocupam um setor contínuo');
       }
-      assert.notEqual(teamSides[0],teamSides[1]);
+      for(const a of room.players)for(const b of room.players)if(a.team!==b.team){
+        const pa=positions.find(s=>s.slot===a.slot),pb=positions.find(s=>s.slot===b.slot);
+        assert.ok(Math.hypot(pa.x-pb.x,pa.y-pb.y)>900,'frentes inimigas separadas');
+      }
     }
   }
 });
 
-test('posições: treino sorteia extremos opostos; fixtures sem mapa conservam suas posições',()=>{
+test('posições: treino admite locais adjacentes sem revelar um oposto fixo; fixtures sem mapa conservam suas posições',()=>{
   const {room,host}=setup('duel',1);
   beginMatch(room,host,false,spawn);
   for(const random of [noShuffle,rotateShuffle]){
     const positions=assignStartingPositions(room,random);
     assert.equal(positions.length,2);
-    assert.equal(positions[0].x+positions[1].x,1800);
-    assert.equal(positions[0].y+positions[1].y,1800);
+    assert.equal((Math.abs(positions[0].site-positions[1].site)%2),1,'sorteios extremos admitem vizinhos');
+    assert.ok(Math.hypot(positions[0].x-positions[1].x,positions[0].y-positions[1].y)>800);
   }
   const fixture=setup('ffa',4,null).room;
   assert.deepEqual(assignStartingPositions(fixture,noShuffle),assignStartingPositions(fixture,rotateShuffle));
@@ -84,14 +87,14 @@ test('posições: todas as partidas usam a atribuição publicada e recursos igu
     const {room,host}=setup(mode,mode==='duel'?1:4,mapId);
     beginMatch(room,host,false,spawn);
     const snapshot=snapshotFor(room,host);
-    assert.deepEqual(snapshot.startingPositions,room.startingPositions);
-    assert.equal(snapshot.startingPositions.length,room.players.length);
+    const alliedSlots=new Set(room.players.filter(p=>p.team===host.team).map(p=>p.slot));
+    assert.deepEqual(snapshot.startingPositions,room.startingPositions.filter(p=>alliedSlots.has(p.slot)));
     for(const player of room.players){
       const point=startingPoint(room,player.slot),base=room.entities.find(e=>e.owner===player.id&&e.type==='base');
       assert.equal(base.x,point.x);assert.equal(base.y,point.y);
-      assert.ok(!terrainBlocked(base.x,base.y,50,mapId));
-      const gold=room.resources.filter(r=>r.type==='gold'&&Math.hypot(r.x-base.x,r.y-base.y)<280);
-      const wood=room.resources.filter(r=>r.type==='wood'&&Math.hypot(r.x-base.x,r.y-base.y)<200);
+      assert.ok(!terrainBlocked(base.x,base.y,50,room.mapId));
+      const gold=room.resources.filter(r=>r.id.startsWith(`g${player.slot}-`));
+      const wood=room.resources.filter(r=>r.id.startsWith(`w${player.slot}-`));
       assert.equal(gold.length,3,`${mapId}/${mode}: três depósitos próximos`);
       assert.equal(gold.reduce((sum,r)=>sum+r.amount,0),24000);
       assert.equal(wood.length,8,`${mapId}/${mode}: oito árvores próximas`);
@@ -158,7 +161,7 @@ test('máquina: usa a segunda vaga liberada e repõe herói morto sem escolher u
   assert.deepEqual(hall.queue,['fort_02']);assert.equal(bot.heroTypes.length,2);
 });
 
-test('máquina: base sudeste da lagoa produz herói e lança onda sem perder salões para o acampamento',async()=>{
+test('máquina: base sorteada da lagoa produz herói e lança onda sem perder salões para o acampamento',async()=>{
   const {room,addPlayer,configureLobby,start,step}=await import('../game.js');
   const state=room('lagoa-sudeste',true),host=addPlayer(state,'Humano');
   configureLobby(state,host,{action:'mode',mode:'coop'});
@@ -167,7 +170,7 @@ test('máquina: base sudeste da lagoa produz herói e lança onda sem perder sal
   const originalRandom=Math.random;
   try {Math.random=noShuffle;start(state,host);} finally {Math.random=originalRandom;}
   const bot=state.players.find(p=>p.slot===7),home=startingPoint(state,bot.slot);
-  assert.deepEqual(home,{x:1580,y:1540});assert.equal(bot.gold,300);assert.equal(bot.wood,200);
+  assert.ok(getMap(state.mapId).spawnSites.some(site=>site.x===home.x&&site.y===home.y));assert.equal(bot.gold,300);assert.equal(bot.wood,200);
   let launched=false;
   while(state.phase==='playing'&&state.time<180&&!launched){
     step(state);

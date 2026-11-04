@@ -58,13 +58,13 @@ test('HTTP/SSE: quatro amigos compartilham atividade e bandeira de coleta; dific
     const tick = [...states[0].keys()].find(t => t >= 2 && states.every(view => view.has(t)));
     const state = states[0].get(tick);
     assert.equal(state.mode, 'coop');
-    assert.equal(state.mapId, 'crystal-ridge');
-    assert.equal(state.startingPositions.length, 8);
-    assert.equal(new Set(state.startingPositions.map(p=>`${p.x},${p.y}`)).size, 8);
-    const humanSide=state.startingPositions.find(p=>p.slot===0).x;
+    assert.equal(state.mapFamilyId, 'crystal-ridge');
+    assert.match(state.mapId, /^crystal-ridge~12~[01]$/);
+    assert.equal(state.startingPositions.length, 4);
+    assert.equal(new Set(state.startingPositions.map(p=>`${p.x},${p.y}`)).size, 4);
     for(const player of state.players){
       const point=state.startingPositions.find(p=>p.slot===player.slot);
-      assert.equal(point.x===humanSide,player.team===0);
+      assert.equal(!!point,player.team===0,'a atribuição inimiga não sai do servidor');
       const home=state.entities.find(e=>e.owner===player.id&&e.type==='base');
       if(home){assert.equal(home.x,point.x);assert.equal(home.y,point.y);}
     }

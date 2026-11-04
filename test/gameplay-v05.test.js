@@ -13,7 +13,9 @@ function setup(terrain = false, allies = false) {
   r.entities = r.entities.filter(e => e.type === 'base');
   // These pathfinding fixtures use explicit local geometry; random starts have
   // separate match tests. Keep each base aligned with the fixture assignment.
+  r.mapId=null;
   r.startingPositions = assignStartingPositions(r, () => .999999);
+  r.mapId=terrain?'three-bridges':null;
   for (const player of r.players) Object.assign(r.entities.find(e => e.owner === player.id), startingPoint(r, player.slot));
   r.resources = []; r.camps = []; r.fogEnabled = false;
   for (const player of r.players) {player.gold = 10000; player.wood = 10000;}
@@ -21,7 +23,7 @@ function setup(terrain = false, allies = false) {
 }
 const advance = (r, seconds) => {for (let i=0; i<Math.ceil(seconds*10); i++) step(r, .1);};
 const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
-const safe = (r,e) => (!r.mapId || !terrainBlocked(e.x,e.y)) && r.entities.every(b => !STATS[b.type].building || b.hp <= 0 || distance(e,b) >= 38);
+const safe = (r,e) => (!r.mapId || !terrainBlocked(e.x,e.y,10,r.mapId)) && r.entities.every(b => !STATS[b.type].building || b.hp <= 0 || distance(e,b) >= 38);
 
 test('jogabilidade: mineração e corte distinguem deslocamento, coleta real e falta de recurso', () => {
   for (const type of ['gold','wood']) {

@@ -1,0 +1,89 @@
+/* Activated by coarse pointers, a compact landscape screen, or an actual touch.
+   Desktop mouse/keyboard layout and order rules are unchanged. */
+.touch-toolbar[hidden],.touch-rotate[hidden]{display:none!important}
+.touch-toolbar{position:absolute;z-index:7;bottom:7px;left:8px;right:8px;pointer-events:none}
+.touch-hint{display:table;max-width:100%;padding:3px 7px;margin-bottom:4px;color:#f2ead2;background:#0b182be8;border:1px solid #647082;border-radius:4px;font:10px/1.3 system-ui}
+.touch-buttons{display:flex;gap:5px;overflow-x:auto;max-width:100%;padding:0 0 3px;pointer-events:auto;scrollbar-width:thin;overscroll-behavior-x:contain}
+.touch-buttons button{flex:0 0 auto;min-height:44px;min-width:44px;padding:7px 10px;color:#edf1ef;background:#102438f2;border:1px solid #758ba2;border-radius:6px;font:600 11px/1.2 system-ui;touch-action:manipulation}
+.touch-buttons button[aria-pressed="true"]{border-color:#ffe2a5;background:#71603a;color:#fff6df;box-shadow:inset 0 0 0 1px #ffe2a5}
+.touch-rotate{position:absolute;z-index:6;top:4px;left:8px;right:8px;margin:0;padding:5px 8px;color:#e3eaf1;background:#102438d9;text-align:center;font:10px/1.4 system-ui;pointer-events:none}
+@media(orientation:landscape){.touch-rotate{display:none!important}}
+.touch-dialog{box-sizing:border-box;width:min(460px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:18px;border:1px solid #c2ae7e;border-radius:10px;color:#f0f1ef;background:#102132;overflow:auto;overscroll-behavior:contain}
+.touch-dialog::backdrop{background:#07101bb3}
+.touch-dialog h2{margin:0 0 12px;font:600 20px/1.3 system-ui;overflow-wrap:anywhere}
+.touch-dialog p{font:14px/1.65 system-ui;color:#e0e6ec;white-space:pre-line;overflow-wrap:break-word;margin:10px 0}
+.touch-dialog button{min-height:44px;padding:10px 16px;margin:4px 4px 0 0;border:1px solid #72889b;border-radius:5px;background:#213c4e;color:#f5f3df;font:600 13px/1.2 system-ui;touch-action:manipulation}
+.touch-dialog button[aria-pressed="true"]{border-color:#e9d098;background:#5a543a}
+.touch-group-numbers{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}
+.touch-group-numbers button{margin:0;font-size:17px}
+body.touch-active #map{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+body.touch-active #action-tooltip{display:none!important}
+body.touch-active #game .control-groups{display:none}
+body.touch-active #game .commanddeck,body.touch-active #game .commanddeck.hero-selection{grid-template-columns:100px minmax(145px,.65fr) minmax(0,1.4fr);grid-template-rows:minmax(0,1fr);gap:6px;padding:6px}
+body.touch-active #game .hud-map{grid-column:1;grid-row:1}
+body.touch-active #game .hud-map small{display:none}
+body.touch-active #game .hud-information{grid-column:2;grid-row:1;display:flex;gap:3px}
+body.touch-active #game .hud-information .selection{display:flex}
+body.touch-active #game .hud-commands{grid-column:3;grid-row:1;grid-template-rows:32px minmax(0,1fr) 14px;gap:3px}
+body.touch-active #game .action-tabs button{min-height:32px;padding:5px;font-size:10px}
+body.touch-active #game .actions,body.touch-active #game .hero-actions{grid-auto-rows:minmax(44px,1fr);overflow-y:auto;overscroll-behavior:contain;gap:4px}
+body.touch-active #game .hero-recruit-grid{grid-template-rows:repeat(2,minmax(44px,1fr))}
+body.touch-active #game .action{min-height:44px;padding:5px;font-size:10px;touch-action:manipulation;user-select:none;-webkit-touch-callout:none}
+body.touch-active #game .hero-card{padding-right:29px}
+body.touch-active #game .hero-thumb{width:24px;height:31px;top:5px;right:2px}
+body.touch-active #game .portrait{display:none}
+body.touch-active #game .selection h3{font-size:12px}
+body.touch-active #game .selection p,body.touch-active #game #hero-status,body.touch-active #game #activity-status{font-size:9px}
+body.touch-active #game #selection-inspect{min-width:36px;min-height:36px}
+body.touch-active #game #production-nav button{min-width:32px;min-height:32px}
+body.touch-active #game .production-item{min-height:30px;padding:2px}
+body.touch-active #game .production-panel{padding:2px 4px}
+body.touch-active #game .production-panel ol{gap:2px}
+body.touch-active #game .production-item strong{font-size:8px}
+body.touch-active #game .production-item span{font-size:7px;-webkit-line-clamp:1}
+body.touch-active #game .action-context{font-size:8px;line-height:14px}
+body.touch-active #game .footerbar{padding:0 6px;gap:6px}
+body.touch-active #game .footerbar button{min-height:28px;padding:3px 7px}
+body.touch-active #game .camp-legend{max-width:170px;padding:4px 6px;font-size:8px}
+body.touch-active #game .camp-legend p{margin:2px 0}
+body.touch-active #game .idle-panel{max-width:145px;padding:5px}
+body.touch-active #game .idle-panel button{min-height:32px}
+body.touch-active #game .map-caption{display:none}
+body.touch-active #game .game-tools button{min-width:32px;min-height:32px;padding:4px}
+body.touch-active #game .game-tools button:first-child{display:inline-block}
+#game #touch-input-toggle{font-size:10px}
+#game #touch-input-toggle[aria-pressed="true"]{border-color:#e7d195;background:#5a543a}
+body.touch-active #game .gamebar{flex-wrap:nowrap;padding:3px 6px;gap:5px}
+body.touch-active #game .economy{flex:1;flex-basis:auto;order:0;border:0;padding:0;gap:7px}
+body.touch-active #game .economy b{font-size:13px;margin:0 2px}
+body.touch-active #game .economy>span{font-size:10px}
+body.touch-active #game .economy small{display:none}
+body.touch-active #game .battle-title{display:none}
+body.touch-active #game #clock{font-size:10px;padding:3px}
+body.touch-active #game:not([hidden]){grid-template-rows:40px minmax(0,1fr) 174px 30px}
+body.touch-active #game.lobby-phase:not([hidden]){grid-template-rows:40px minmax(0,1fr) 30px}
+body.touch-active #game .lobby-settings select,body.touch-active #game .lobby button{min-height:40px}
+@media(max-height:430px) and (orientation:landscape){
+ body.touch-active #game:not([hidden]){grid-template-rows:38px minmax(0,1fr) 150px 28px}
+ body.touch-active #game.lobby-phase:not([hidden]){grid-template-rows:38px minmax(0,1fr) 28px}
+ body.touch-active #game .commanddeck,body.touch-active #game .commanddeck.hero-selection{grid-template-columns:86px minmax(135px,.65fr) minmax(0,1.4fr);padding:4px;gap:5px}
+ body.touch-active #game .hud-commands{grid-template-rows:30px minmax(0,1fr) 12px;gap:2px}
+ body.touch-active #game .action-tabs button{min-height:30px}
+ body.touch-active #game .action-context{line-height:12px}
+ body.touch-active #game .camp-legend{max-width:145px;font-size:7px}
+}
+@media(orientation:portrait) and (max-width:700px){
+ body.touch-active #game:not([hidden]){grid-template-rows:40px minmax(0,1fr) 246px 30px}
+ body.touch-active #game.lobby-phase:not([hidden]){grid-template-rows:40px minmax(0,1fr) 30px}
+ body.touch-active #game .commanddeck,body.touch-active #game .commanddeck.hero-selection{grid-template-columns:82px minmax(0,1fr);grid-template-rows:72px minmax(0,1fr)}
+ body.touch-active #game .hud-information{grid-column:2;grid-row:1}
+ body.touch-active #game .hud-commands{grid-column:1/3;grid-row:2}
+ body.touch-active #game .hud-information:has(.production-panel:not([hidden])) .selection{display:none}
+ body.touch-active #game .game-tools button:first-child{display:none}
+ body.touch-active #game .camp-legend{top:36px;max-width:150px}
+ body.touch-active #game .idle-panel{top:36px;max-width:135px}
+ body.touch-active #game .game-tools{gap:2px}
+ body.touch-active #game .economy{gap:3px}
+ body.touch-active #game .economy b{font-size:12px}
+ body.touch-active #game .economy>span{font-size:9px}
+}

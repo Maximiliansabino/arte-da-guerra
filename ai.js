@@ -2,8 +2,8 @@ import {COST, STATS, HERO_TYPES, allied, placementError, upgradeCost, collective
 import {ABILITIES, HERO_ABILITIES, RESEARCH, ITEMS, researchCost} from './public/legends.js';
 import {HERO_CATALOG, EXCLUSIVE_CATALOG} from './public/tribes-data.js';
 import {DEFAULT_DIFFICULTY, DIFFICULTIES} from './public/ai-config.js';
-import {getMap, terrainBlocked, segmentClear} from './public/terrain.js';
-import {canSee, startingPoint} from './match.js';
+import {getMap, terrainBlocked, segmentClear, route as terrainRoute} from './public/terrain.js';
+import {canSee, canKnowResource, startingPoint} from './match.js';
 import {chosenHeroes, heroRecruitError} from './public/hero-roster.js';
 
 const plans = new WeakMap();
@@ -13,7 +13,10 @@ export function botDiagnostics(r,p){
     wave:[...plan.wave],initialSize:plan.initialSize,goal:plan.goal,goalKind:plan.goalKind,
     targetOwner:plan.targetOwner,targetCamp:plan.targetCamp,route:plan.route,
     routeProgress:[...(plan.routeProgress||new Map())],launchedAt:plan.launchedAt,campsCleared:plan.campsCleared,
-    failedAssaults:plan.failedAssaults||0,observedEnemyCount:plan.observedEnemyCount||0};
+    failedAssaults:plan.failedAssaults||0,observedEnemyCount:plan.observedEnemyCount||0,
+    knownBuildings:[...(plan.knownBuildings?.values()||[])].map(e=>({...e})),
+    scoutId:plan.scoutId??null,scoutGoal:plan.scoutGoal?{...plan.scoutGoal}:null,
+    scoutRoute:plan.scoutRoute,scoutVisits:[...(plan.scoutVisits||new Map())]};
 }
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const ready = e => e && !e.construct && !e.upgrade && !e.researchJob && !e.troopUpgrade;
@@ -113,7 +116,7 @@ export const AI_SKILL_POLICIES={
 
 function lineOfTravel(r,a,b) {
   return segmentClear(a,b,(x,y)=>(r.mapId&&terrainBlocked(x,y,10,r.mapId))||
-    r.entities.some(e=>e.hp>0&&STATS[e.type]?.building&&distance(e,{x,y})<45));
+    r.entities.some(e=>e.hp>0&&STATS[e.type]?.building&&canSee(r,a.owner,e)&&distance(e,{x,y})<45));
 }
 function nearLine(e,from,to,length,halfWidth) {
   const dx=to.x-from.x,dy=to.y-from.y,n=Math.hypot(dx,dy)||1;
@@ -231,36 +234,135 @@ function stagingPoint(r, base) {
     candidates.push({x: base.x + facing * Math.cos(angle) * radius, y: base.y + Math.sin(angle) * radius});
   }
   return candidates.find(point => point.x >= 35 && point.x <= 1765 && point.y >= 35 && point.y <= 1765 &&
-    (!r.mapId || !terrainBlocked(point.x, point.y, 20, r.mapId)) &&
-    !r.entities.some(e => e.hp > 0 && STATS[e.type].building && distance(e, point) < 80)) ||
+    (!r.mapId || (!terrainBlocked(point.x, point.y, 20, r.mapId)&&
+      !getMap(r.mapId).camps.some(c=>distance(point,c)<(c.avoidanceRadius||(c.tier==='boss'?340:260))))) &&
+    !r.entities.some(e => e.hp > 0 && STATS[e.type].building && canSee(r,base.owner,e) && distance(e, point) < 80)) ||
     {x: base.x, y: Math.min(1750, base.y + 90)};
 }
 
-function opponent(r, p, base, hard) {
-  const enemies = r.players.filter(other => !other.defeated && !allied(r, p.id, other.id));
-  // A teammate's recently announced assault is friendly information. A Normal
-  // machine can join that objective after the opening, without a perfect
-  // simultaneous launch or reading any hidden enemy state.
-  if(r.difficulty!=='easy'&&r.time>=300){
-    const allies=r.players.filter(other=>other.id!==p.id&&allied(r,p.id,other.id));
-    for(const ally of allies){const plan=plans.get(r)?.get(ally.id);
-      if(plan?.goalKind==='enemy'&&plan.wave.size&&r.time-plan.launchedAt<=45){const target=enemies.find(e=>e.id===plan.targetOwner);if(target)return target;}
-    }
+// Only observations become enemy intelligence. Remember a building after it
+// leaves vision, and forget it only when that location is visibly empty.
+function observeBuildings(r,p,plan,visibleEnemies) {
+  plan.knownBuildings??=new Map();
+  for(const entity of visibleEnemies.filter(e=>STATS[e.type]?.building))
+    plan.knownBuildings.set(entity.id,{id:entity.id,owner:entity.owner,type:entity.type,x:entity.x,y:entity.y,lastSeen:r.time});
+  for(const [id,known] of plan.knownBuildings){
+    const owner=r.players.find(other=>other.id===known.owner);
+    if(!owner||owner.defeated||(canSee(r,p.id,known)&&!visibleEnemies.some(e=>e.id===id)))plan.knownBuildings.delete(id);
   }
-  // Difficult allied machines focus the same publicly known enemy spawn. No
-  // enemy health, orders, construction or hidden current positions are read.
-  return enemies.sort((a, b) => hard ? a.slot - b.slot :
-    distance(base, startingPoint(r, a.slot)) - distance(base, startingPoint(r, b.slot)))[0];
 }
 
-function assaultRoute(r,base,goal) {
-  if(!r.mapId||(base.x<900)===(goal.x<900))return [{...goal}];
-  const map=getMap(r.mapId),fromLeft=base.x<900;
-  // These crossings are terrain/public camp knowledge. Ordinary offensives
-  // avoid the central Colossus and veteran camps; an explicit camp expedition
-  // uses its own goal instead. No hidden health or opponent orders are read.
-  const y=map.river?(base.y<900?300:1500):(base.y<900?40:1760);
-  return [{x:fromLeft?650:1150,y},{x:fromLeft?1150:650,y},{...goal}];
+function opponent(r, p, base, hard, plan) {
+  const enemies=r.players.filter(other=>!other.defeated&&!allied(r,p.id,other.id));
+  // Terrain-free simulation fixtures predate discovery. Real battlefields
+  // always use observed buildings, including when their fog is disabled.
+  if(!r.mapId){
+    const enemy=enemies.sort((a,b)=>hard?a.slot-b.slot:distance(base,startingPoint(r,a.slot))-distance(base,startingPoint(r,b.slot)))[0];
+    return enemy?{owner:enemy.id,...startingPoint(r,enemy.slot)}:null;
+  }
+  const objectives=[...plan.knownBuildings.values()].filter(e=>enemies.some(other=>other.id===e.owner));
+  if(r.difficulty!=='easy'&&r.time>=300){
+    for(const ally of r.players.filter(other=>other.id!==p.id&&allied(r,p.id,other.id))){
+      const allyPlan=plans.get(r)?.get(ally.id);
+      const target=allyPlan?.goalKind==='enemy'&&allyPlan.wave.size&&r.time-allyPlan.launchedAt<=45?
+        objectives.find(e=>e.owner===allyPlan.targetOwner):null;
+      if(target)return target;
+    }
+  }
+  return objectives.sort((a,b)=>Number(b.type==='base')-Number(a.type==='base')||distance(base,a)-distance(base,b)||a.id-b.id)[0]||null;
+}
+
+function travelBlocked(r,x,y) {
+  if(terrainBlocked(x,y,10,r.mapId))return true;
+  return getMap(r.mapId).camps.some(c=>distance(c,{x,y})<(c.avoidanceRadius||(c.tier==='boss'?340:260)));
+}
+
+// Public terrain and camp territories suffice to plan an ordinary march.
+// Never inspect hidden defenders, buildings, guard health or spawn assignments.
+function observedBlockers(r,viewerId,goal,from){
+  if(!viewerId)return [];
+  return (r.entities||[]).filter(e=>e.hp>0&&STATS[e.type]?.building&&canSee(r,viewerId,e)&&
+    distance(e,goal)>65&&(!from||distance(e,from)>=65));
+}
+export function botTravelRoute(r,from,goal,viewerId=null) {
+  if(!r.mapId)return [{x:goal.x,y:goal.y}];
+  const buildings=observedBlockers(r,viewerId,goal,from);
+  // The extra room accommodates the ordinary command formation offsets.
+  const blocked=(x,y)=>travelBlocked(r,x,y)||buildings.some(b=>distance(b,{x,y})<65);
+  if(segmentClear(from,goal,blocked))return [{x:goal.x,y:goal.y}];
+  const raw=terrainRoute(from,goal,blocked);
+  if(!raw.length||distance(raw.at(-1),goal)>45)return [];
+  const points=[];let current=from,index=0;
+  while(index<raw.length){
+    let next=index;
+    while(next+1<raw.length&&segmentClear(current,raw[next+1],blocked))next++;
+    points.push(raw[next]);current=raw[next];index=next+1;
+  }
+  return points;
+}
+
+function scoutTurn(r,p,plan,army,stage,visibleEnemies,threatened,issue) {
+  if(!r.mapId)return null;
+  plan.scoutVisits??=new Map();
+  const sites=getMap(r.mapId).spawnSites||[
+    {id:'nw',x:220,y:220},{id:'ne',x:1580,y:220},{id:'sw',x:220,y:1580},{id:'se',x:1580,y:1580}
+  ];
+  for(const site of sites)if(canSee(r,p.id,site))plan.scoutVisits.set(site.id,r.time);
+  let scout=army.find(e=>e.id===plan.scoutId&&!plan.wave.has(e.id));
+  const release=()=>{plan.scoutId=null;plan.scoutGoal=null;plan.scoutRoute=null;};
+  const march=()=>{
+    const blockers=observedBlockers(r,p.id,plan.scoutGoal,scout);
+    if(plan.scoutRoute.slice(plan.scoutProgress,-1).some(point=>blockers.some(b=>distance(b,point)<65))){
+      const path=botTravelRoute(r,scout,plan.scoutGoal,p.id);
+      if(path.length){plan.scoutRoute=path;plan.scoutProgress=0;}
+    }
+    while(plan.scoutProgress<plan.scoutRoute.length-1&&distance(scout,plan.scoutRoute[plan.scoutProgress])<30)plan.scoutProgress++;
+    const point=plan.scoutRoute[plan.scoutProgress];
+    if(scout.order?.type!=='move'||!Number.isFinite(scout.order.x)||distance(scout.order,point)>35)
+      issue({type:'move',ids:[scout.id],...point});
+    return scout.id;
+  };
+  const nearby=scout?visibleEnemies.filter(e=>mobile(e)&&distance(e,scout)<210):[];
+  // Two scouts must be able to pass each other; fleeing every lone soldier
+  // can make symmetric openings repeat forever without finding either base.
+  const endangered=nearby.length>1||nearby.some(e=>STATS[e.type]?.hero||(ranged(e)&&distance(e,scout)<(STATS[e.type].range||0)+35));
+  if(threatened||[...plan.knownBuildings.values()].some(e=>e.type==='base')||scout&&(health(scout)<.5||endangered||plan.scoutGoal?.returning)){
+    if(!scout||distance(scout,stage)<70){release();return null;}
+    if(!plan.scoutGoal?.returning||distance(plan.scoutGoal,stage)>70){
+      const path=botTravelRoute(r,scout,stage,p.id);
+      if(!path.length){release();return null;}
+      if(plan.scoutGoal)plan.scoutVisits.set(plan.scoutGoal.id,r.time-30);
+      plan.scoutGoal={...stage,returning:true};plan.scoutRoute=path;plan.scoutProgress=0;
+    }
+    return march();
+  }
+  const starts={easy:45,normal:30,hard:20};
+  if(r.time<(starts[r.difficulty]||30))return null;
+  if(!scout){
+    release();
+    if(army.filter(e=>!plan.wave.has(e.id)).length<2)return null;
+    scout=army.find(e=>e.type==='soldier'&&!plan.wave.has(e.id)&&health(e)>=.8&&!busy(e));
+    if(!scout)return null;
+    plan.scoutId=scout.id;
+  }
+  if(!plan.scoutPosition||distance(scout,plan.scoutPosition)>15){plan.scoutPosition={x:scout.x,y:scout.y};plan.scoutProgressAt=r.time;}
+  if(plan.scoutGoal&&r.time-plan.scoutProgressAt>30){
+    plan.scoutVisits.set(plan.scoutGoal.id,r.time);plan.scoutGoal=null;plan.scoutRoute=null;plan.scoutProgressAt=r.time;
+  }
+  if(plan.scoutGoal&&canSee(r,p.id,plan.scoutGoal)){plan.scoutGoal=null;plan.scoutRoute=null;}
+  if(!plan.scoutGoal){
+    // Rotate equal candidates per player/room, without favoring occupied sites.
+    const candidates=sites.filter(site=>r.time-(plan.scoutVisits.get(site.id)??-Infinity)>=60)
+      .sort((a,b)=>(plan.scoutVisits.get(a.id)??-Infinity)-(plan.scoutVisits.get(b.id)??-Infinity)||
+        distance(scout,a)-distance(scout,b)||hash(`${r.code}:${p.slot}:${a.id}`)-hash(`${r.code}:${p.slot}:${b.id}`));
+    for(const site of candidates){
+      const path=botTravelRoute(r,scout,site,p.id);
+      if(!path.length){plan.scoutVisits.set(site.id,r.time);continue;}
+      plan.scoutGoal={id:site.id,x:site.x,y:site.y};plan.scoutRoute=path;plan.scoutProgress=0;break;
+    }
+  }
+  if(!plan.scoutGoal){release();return null;}
+  return march();
 }
 
 
@@ -269,7 +371,7 @@ function gather(r, p, workers, issue, difficulty, plan) {
   if(workers.length>2&&p.wood<120&&p.gold>p.wood*2+100)targetWood=Math.min(workers.length-1,targetWood+2);
   else if(workers.length>2&&p.gold<150&&p.wood>p.gold*2+100)targetWood=Math.max(1,targetWood-1);
   const assign=(worker,kind)=>{
-    const resource=r.resources.filter(t=>t.amount>0&&t.type===kind).sort((a,b)=>distance(worker,a)-distance(worker,b))[0];
+    const resource=r.resources.filter(t=>t.amount>0&&t.type===kind&&canKnowResource(r,p.id,t)).sort((a,b)=>distance(worker,a)-distance(worker,b))[0];
     return !!resource&&issue({type:'gather',ids:[worker.id],target:resource.id});
   };
   for (const worker of workers) {
@@ -418,6 +520,7 @@ export function botTurn(r, p, {command}) {
   };
   const workers = own.filter(e => e.type === 'worker'), army = own.filter(military), stage = stagingPoint(r, base);
   const visibleEnemies=r.entities.filter(e=>e.hp>0&&e.owner!=='neutral'&&!allied(r,p.id,e.owner)&&canSee(r,p.id,e));
+  observeBuildings(r,p,plan,visibleEnemies);
   const observedArmy=visibleEnemies.filter(e=>mobile(e)&&e.type!=='worker').length;
   if(observedArmy>=(plan.observedEnemyCount||0)||r.time-(plan.observedEnemyAt||0)>90){plan.observedEnemyCount=observedArmy;plan.observedEnemyAt=r.time;}
   desiredWaveSize=waveSizeForBot(difficulty,r.time,plan.failedAssaults||0,plan.observedEnemyCount||0);
@@ -536,12 +639,29 @@ export function botTurn(r, p, {command}) {
     if (selected.length) issue({type, ids: selected.map(e => e.id), x: point.x, y: point.y});
   };
   const advanceAssault = units => {
-    if(plan.goalKind!=='enemy'||!plan.route?.length){if(plan.goal)moveGroup(units,plan.goal,'attackMove');return;}
+    if(plan.goalKind!=='enemy'){if(plan.goal)moveGroup(units,plan.goal,'attackMove');return;}
+    if(!plan.route?.length||!units.length)return;
+    const blockers=observedBlockers(r,p.id,plan.goal);
+    // A new friendly construction can occupy a previously valid waypoint.
+    // Replan only from visible footprints; unseen buildings reveal nothing.
+    if(r.mapId&&r.time>=(plan.nextRouteCheck||0)){
+      plan.nextRouteCheck=r.time+4;
+      const firstPending=Math.min(...units.map(unit=>plan.routeProgress?.get(unit.id)??0));
+      if(plan.route.slice(firstPending,-1).some(point=>blockers.some(b=>distance(b,point)<65))){
+        const path=botTravelRoute(r,units[0],plan.goal,p.id);
+        if(path.length){plan.route=path;plan.routeProgress=new Map();}
+      }
+    }
+    const blocked=(x,y)=>travelBlocked(r,x,y)||blockers.some(b=>distance(b,{x,y})<65);
     const groups=new Map();plan.routeProgress??=new Map();
     for(const unit of units){
       let index=plan.routeProgress.get(unit.id);
-      if(index===undefined)index=plan.route.length>1&&(unit.x<900)===(plan.goal.x<900)?plan.route.length-1:0;
-      while(index<plan.route.length-1&&distance(unit,plan.route[index])<100)index++;
+      if(index===undefined){
+        index=0;
+        // A reinforced or redirected group may join a later safe waypoint.
+        for(let i=plan.route.length-1;i>0;i--)if(!r.mapId||segmentClear(unit,plan.route[i],blocked)){index=i;break;}
+      }
+      while(index<plan.route.length-1&&distance(unit,plan.route[index])<30)index++;
       plan.routeProgress.set(unit.id,index);
       if(!groups.has(index))groups.set(index,[]);groups.get(index).push(unit);
     }
@@ -576,7 +696,8 @@ export function botTurn(r, p, {command}) {
   if (visibleThreats.length && (base.hp < base.maxHp * .65 || army.filter(e => !plan.wave.has(e.id)).length < visibleThreats.length)) {
     plan.wave.clear(); plan.goal = null;plan.goalKind=null; plan.nextAttack = r.time + profile.regroupDelay;
   }
-  const reserves = army.filter(e => !plan.wave.has(e.id));
+  const scoutId=scoutTurn(r,p,plan,army,stage,visibleEnemies,visibleThreats.length>0,issue);
+  const reserves = army.filter(e => !plan.wave.has(e.id)&&e.id!==scoutId);
   if (visibleThreats.length) moveGroup(reserves, visibleThreats[0], 'attackMove');
   else moveGroup(reserves, stage);
 
@@ -602,22 +723,29 @@ export function botTurn(r, p, {command}) {
       plan.wave=new Set(cohort.map(e=>e.id));plan.assemblySince=null;plan.initialSize=cohort.length;plan.goalKind='camp';plan.targetCamp=camp.id;plan.goal={x:camp.x,y:camp.y};plan.launchedAt=r.time;
       plan.nextReinforcement=r.time+profile.regroupDelay;moveGroup(cohort,plan.goal,'attackMove');
     }else if (r.time>=plan.nextAttack && assembled.length >= minimumWaveSize && assembled.length >= Math.floor(reserves.length * .7)) {
-      const enemy = opponent(r, p, base, difficulty === 'hard');
-      if (enemy) {
+      const enemy = opponent(r, p, base, difficulty === 'hard',plan);
+      const route=enemy?botTravelRoute(r,stage,enemy,p.id):[];
+      if (enemy&&route.length) {
         const cohort = selectAssaultCohort(assembled,desiredWaveSize);
         plan.wave = new Set(cohort.map(e => e.id)); plan.initialSize = cohort.length;
         plan.assemblySince=null;
-        plan.targetOwner = enemy.id; plan.goalKind='enemy';plan.lastObjective='enemy'; plan.goal = startingPoint(r, enemy.slot); plan.launchedAt = r.time;
-        plan.route=assaultRoute(r,base,plan.goal);plan.routeProgress=new Map();
+        plan.targetOwner = enemy.owner;plan.targetBuilding=enemy.id; plan.goalKind='enemy';plan.lastObjective='enemy'; plan.goal = {x:enemy.x,y:enemy.y}; plan.launchedAt = r.time;
+        plan.route=route;plan.routeProgress=new Map();
         plan.nextReinforcement = r.time + profile.regroupDelay;
         advanceAssault(cohort);
       }
     }
   } else if (plan.wave.size) {
     const target = r.players.find(other => other.id === plan.targetOwner);
-    if (plan.goalKind!=='camp'&&(!target || target.defeated)) {
-      const enemy = opponent(r, p, base, difficulty === 'hard');
-      if (enemy) {plan.targetOwner = enemy.id; plan.goal = startingPoint(r, enemy.slot);plan.route=assaultRoute(r,base,plan.goal);plan.routeProgress=new Map();}
+    if (plan.goalKind!=='camp'&&(!target || target.defeated||(r.mapId&&!plan.knownBuildings.has(plan.targetBuilding)))) {
+      const enemy = opponent(r, p, base, difficulty === 'hard',plan);
+      if (enemy) {
+        plan.targetOwner=enemy.owner;plan.targetBuilding=enemy.id;plan.goal={x:enemy.x,y:enemy.y};
+        const front=survivingWave[0]||stage;plan.route=botTravelRoute(r,front,plan.goal,p.id);plan.routeProgress=new Map();
+      }else{
+        plan.wave.clear();plan.goal=null;plan.goalKind=null;plan.targetOwner=null;plan.targetBuilding=null;
+        moveGroup(survivingWave,stage);
+      }
     }
     if (plan.goal) {
       // A long offensive receives complete reinforcing cohorts; a newborn

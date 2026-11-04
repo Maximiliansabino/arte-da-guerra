@@ -1,11 +1,12 @@
 import {createRoomLifecycle} from './room-lifecycle.js';
+import {configureRoomDirectory,verifyRoomPassword,resetRoomReady,setRoomReady,assertRoomReady,directorySnapshot,listPublicRooms} from './room-directory.js';
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {room,addPlayer,start,command,step,snapshot,configureLobby} from './game.js';
 const {version:gameVersion}=JSON.parse(await readFile(new URL('./package.json',import.meta.url),'utf8'));
 const rooms=new Map(),streams=new Map(),limits=new Map(),connections=new Map();
-const lifecycle=createRoomLifecycle(rooms,streams);
+const lifecycle=createRoomLifecycle(rooms,streams,{onChange:r=>{resetRoomReady(r);broadcast(r);}});
 // Hosts explícitos impedem que um domínio externo seja usado para acessar o servidor local.
 const publicHosts=new Set([process.env.RENDER_EXTERNAL_HOSTNAME,...(process.env.ALLOWED_HOSTS||'').split(',')].filter(Boolean).map(h=>h.trim().toLowerCase()));
 function allowedHost(host){
@@ -38,6 +39,7 @@ export const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   if(process.env.NODE_ENV==='production')res.setHeader('Strict-Transport-Security','max-age=31536000');
   if(req.method==='GET'&&url.pathname==='/health')return json(res,200,{ok:true});
+  if(req.method==='GET'&&url.pathname==='/api/rooms'){rate(`directory:${ip}`,30,10000);lifecycle.sweep();return json(res,200,{rooms:listPublicRooms(rooms),version:gameVersion});}
   if(req.method==='POST'){
    if(!['/api/create','/api/join','/api/start','/api/command','/api/lobby','/api/leave'].includes(url.pathname))return json(res,404,{error:'Não encontrado.'});
    // Limitar antes de ler o corpo reduz o custo de pedidos não autenticados.
@@ -46,28 +48,45 @@ export const server=http.createServer(async(req,res)=>{
    else if(url.pathname==='/api/join')rate(`join:${ip}`,30,60000);
    else{session=auth(req,url);rate(session[1].id,20);}
    const a=await body(req);
-   if(url.pathname==='/api/create'){lifecycle.sweep();if(rooms.size>=30)fail(503,'O servidor atingiu o limite de 30 salas ativas. Tente mais tarde.');const r=room(undefined,true);r.emptySince=Date.now();rooms.set(r.code,r);const p=addPlayer(r,a.name);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});}
-   if(url.pathname==='/api/join'){const r=rooms.get(String(a.code).trim().toLowerCase());if(!r)throw Error('Sala não encontrada. Confira o convite.');const p=addPlayer(r,a.name);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});}
+   if(url.pathname==='/api/create'){
+    const r=room(undefined,true);await configureRoomDirectory(r,a);lifecycle.sweep();
+    if(rooms.size>=30)fail(503,'O servidor atingiu o limite de 30 salas ativas. Tente mais tarde.');
+    const p=addPlayer(r,a.name);r.emptySince=Date.now();rooms.set(r.code,r);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});
+   }
+   if(url.pathname==='/api/join'){
+    const code=typeof a.code==='string'?a.code.trim().toLowerCase():'',r=rooms.get(code);
+    if(!r)throw Error('Sala não encontrada. Confira o convite.');
+    rate(`join-room:${code}:${ip}`,12,60000);
+    if(!await verifyRoomPassword(r,a.password))fail(403,'Senha incorreta ou ausente.');
+    // Hashing is asynchronous: recheck lifetime and capacity after it completes.
+    if(rooms.get(code)!==r)throw Error('Sala não encontrada. Confira o convite.');
+    const p=addPlayer(r,a.name);resetRoomReady(r);broadcast(r);return json(res,200,{code:r.code,token:p.token,id:p.id});
+   }
    const [r,p]=session;
    if(url.pathname==='/api/leave'){
     if(r.phase==='playing'&&!p.defeated)command(r,p,{type:'surrender'});
-    lifecycle.leave(r,p);if(rooms.has(r.code))broadcast(r);
+    lifecycle.leave(r,p);resetRoomReady(r);if(rooms.has(r.code))broadcast(r);
     return json(res,200,{ok:true});
    }
    let result;
-   if(url.pathname==='/api/lobby')configureLobby(r,p,a);
-   else if(url.pathname==='/api/start')start(r,p,a.practice===true);
+   if(url.pathname==='/api/lobby'){
+    if(a.action==='ready')setRoomReady(r,p,a);
+    else{configureLobby(r,p,a);const changed=a.action==='faction'?r.players.find(member=>member.slot===(a.slot??p.slot)):null;resetRoomReady(r,changed?.id);}
+   }
+   else if(url.pathname==='/api/start'){assertRoomReady(r);start(r,p,a.practice===true);}
    else if(url.pathname==='/api/command')result=command(r,p,a);
    else return json(res,404,{error:'Não encontrado.'});
    if(url.pathname==='/api/lobby'||url.pathname==='/api/start'||a.type==='surrender')broadcast(r);return json(res,200,{ok:true,...(result||{})});
   }
   if(req.method==='GET'&&url.pathname==='/api/events'){
-   rate(`events:${ip}`,12,10000);const [r,p]=auth(req,url);rate(`events-player:${p.id}`,4,10000);const old=streams.get(p.id);if(old)old.end();
-   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(snapshot(r,p))}\n\n`);streams.set(p.id,res);delete r.emptySince;
-   res.on('close',()=>{if(streams.get(p.id)===res){streams.delete(p.id);lifecycle.disconnected(r);}});return;
+   rate(`events:${ip}`,12,10000);const [r,p]=auth(req,url);rate(`events-player:${p.id}`,4,10000);const old=streams.get(p.id);
+   res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(`data: ${JSON.stringify(directorySnapshot(r,snapshot(r,p)))}\n\n`);streams.set(p.id,res);lifecycle.disconnected(r);if(old)old.end();
+   res.on('close',()=>{if(streams.get(p.id)===res){streams.delete(p.id);lifecycle.disconnected(r);if(r.phase==='lobby'&&rooms.has(r.code)){resetRoomReady(r,p.id);broadcast(r);}}});return;
   }
   const files={
    '/':'index.html','/client.js':'client.js','/terrain.js':'terrain.js',
+   '/room-browser.js':'room-browser.js','/lobby-browser.css':'lobby-browser.css',
+   '/touch-controls.js':'touch-controls.js','/mobile-controls.css':'mobile-controls.css','/map-art.js':'map-art.js',
    '/rules.js':'rules.js','/legends.js':'legends.js','/match-config.js':'match-config.js','/ai-config.js':'ai-config.js',
    '/hero-roster.js':'hero-roster.js','/camp-config.js':'camp-config.js',
    '/tribes-data.js':'tribes-data.js','/tribe-art.js':'tribe-art.js','/tooltips.js':'tooltips.js','/portraits.js':'portraits.js',
@@ -103,7 +122,7 @@ function broadcast(r){
   if(!s||s.destroyed)continue;
   if(s.writableLength>1024*1024){s.destroy();continue;}
   const key=Number.isInteger(p.team)?`team:${p.team}`:p.id;
-  if(!packets.has(key))packets.set(key,`data: ${JSON.stringify(snapshot(r,p))}\n\n`);
+  if(!packets.has(key))packets.set(key,`data: ${JSON.stringify(directorySnapshot(r,snapshot(r,p)))}\n\n`);
   s.write(packets.get(key));
  }
 }

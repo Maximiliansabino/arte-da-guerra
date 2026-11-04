@@ -61,12 +61,63 @@ for(const x of [620,1180])for(const y of [250,1550])
 
 export const MAPS = {[bridges.id]:bridges,[ridge.id]:ridge,[lagoon.id]:lagoon};
 export const MAP = bridges; // Compatibility for the original map's geometry tests.
-export function getMap(mapId=DEFAULT_MAP){return MAPS[mapId] || MAPS[DEFAULT_MAP];}
+const variants=new Map();
+export const MAP_CAPACITIES=Object.freeze([4,8,12]);
+export function mapFamilyId(id=DEFAULT_MAP){const family=String(id).split('~')[0];return Object.hasOwn(MAPS,family)?family:DEFAULT_MAP;}
+export function mapCapacity(participants=2){return participants<=2?4:participants<=4?8:12;}
+export function resolveMapId(id,participants,variant=0){return `${mapFamilyId(id)}~${mapCapacity(participants)}~${Math.abs(Math.floor(variant))%2}`;}
+export function pointSegmentDistance(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,n=dx*dx+dy*dy,t=n?Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/n)):0;return Math.hypot(p.x-a.x-dx*t,p.y-a.y-dy*t);}
+export function trailDistance(point,trail){let distance=Infinity;for(let i=1;i<trail.points.length;i++)distance=Math.min(distance,pointSegmentDistance(point,trail.points[i-1],trail.points[i]));return distance;}
+function polar(radius,angle){return {x:Math.round(900+Math.cos(angle)*radius),y:Math.round(900+Math.sin(angle)*radius)};}
+function makeVariant(family,capacity,variant){
+ const original=MAPS[family],config={4:{radius:580,loop:680,edge:180,label:'Compacto'},8:{radius:640,loop:790,edge:75,label:'Médio'},12:{radius:690,loop:840,edge:15,label:'Amplo'}}[capacity];
+ const offset=Math.PI/capacity,spawnSites=Array.from({length:capacity},(_,index)=>({id:index,...polar(config.radius,offset+index*Math.PI*2/capacity)}));
+ const ring=Array.from({length:33},(_,i)=>polar(config.loop,i*Math.PI/16));
+ const trails=[{kind:'main',width:90,points:ring}];
+ for(const site of spawnSites){const angle=Math.atan2(site.y-900,site.x-900);for(const side of [-1,1])trails.push({kind:'flank',width:70,points:[site,polar(config.radius+65,angle+side*.1),polar(config.loop,angle+side*.2)]});}
+ const inner=variant?430:450;
+ for(const side of [-1,1]){
+  trails.push({kind:'crossing',width:78,points:[{x:900-config.loop,y:900+side*140},{x:900-inner,y:900+side*inner},{x:780,y:900+side*config.loop},{x:1020,y:900+side*config.loop},{x:900+inner,y:900+side*inner},{x:900+config.loop,y:900+side*140}]});
+ }
+ // Six separate clearings surround the boss at equal distance. Keeping 340px
+ // between adjacent encounters prevents easy guards pulling veterans/bosses.
+ const camps=[{x:560,y:900,tier:'easy'},{x:1240,y:900,tier:'easy'},{x:1070,y:606,tier:'medium'},{x:730,y:1194,tier:'medium'},{x:730,y:606,tier:'hard'},{x:1070,y:1194,tier:'hard'},{x:900,y:900,tier:'boss'}].map(c=>({...c,avoidanceRadius:c.tier==='boss'?340:260}));
+ for(const camp of camps){const angle=Math.atan2(camp.y-900,camp.x-900);trails.push({kind:'camp',width:44,points:[polar(config.loop,angle),{x:camp.x,y:camp.y}]});}
+ const map={...original,id:`${family}~${capacity}~${variant}`,familyId:family,capacity,variant,sizeLabel:config.label,
+  description:`${original.description} ${config.label}: ${capacity} locais possíveis de base; posições inimigas precisam ser descobertas.`,
+  bounds:{minX:config.edge,minY:config.edge,maxX:1800-config.edge,maxY:1800-config.edge},spawnSites,trails,camps,
+  clearings:[...spawnSites.map(s=>({...s,radius:125,kind:'start'})),...camps.map(c=>({...c,radius:c.tier==='boss'?105:78,kind:'camp'}))],
+  river:null,bridges:[],lakes:[],passages:[],obstacles:[]};
+ if(family==='three-bridges'){map.river={x:900,width:110};map.bridges=[900-config.loop,900,900+config.loop];}
+ if(family==='enchanted-lagoon')map.lakes=[{x:variant?920:900,y:490,rx:100,ry:95},{x:variant?880:900,y:1310,rx:100,ry:95}];
+ const excluded=p=>spawnSites.some(site=>Math.hypot(p.x-site.x,p.y-site.y)<255)||camps.some(c=>Math.hypot(p.x-c.x,p.y-c.y)<95)||trails.some(t=>trailDistance(p,t)<t.width/2+55);
+ // Authored symmetric groves and ridges frame the roads. The same descriptor is
+ // used by rendering, collision and navigation; no visual-only blocking paths.
+ for(const side of [-1,1])for(const radial of [290,460,590])for(let i=-3;i<=3;i++){
+  const center={x:900+side*radial,y:900+i*85+side*(variant?45:-45)};
+  for(const dx of [-35,0,35])for(const dy of [-30,30]){
+   const p={x:center.x+dx,y:center.y+dy,r:family==='crystal-ridge'?20:17,type:family==='crystal-ridge'?(i%2?'crystal':'rock'):'tree'};
+   if(p.x<config.edge+40||p.x>1760-config.edge||p.y<config.edge+40||p.y>1760-config.edge||excluded(p))continue;
+   if(map.river&&Math.abs(p.x-900)<105)continue;
+   if(map.lakes.some(l=>((p.x-l.x)/(l.rx+35))**2+((p.y-l.y)/(l.ry+35))**2<1))continue;
+   map.obstacles.push(p);
+  }
+ }
+ return map;
+}
+export function getMap(mapId=DEFAULT_MAP){
+ if(Object.hasOwn(MAPS,mapId))return MAPS[mapId];
+ const match=/^(three-bridges|crystal-ridge|enchanted-lagoon)~(4|8|12)~([01])$/.exec(String(mapId));
+ if(!match)return MAPS[DEFAULT_MAP];
+ if(!variants.has(mapId))variants.set(mapId,makeVariant(match[1],Number(match[2]),Number(match[3])));
+ return variants.get(mapId);
+}
 
 export function terrainBlocked(x,y,pad=10,mapId=DEFAULT_MAP){
   if(!Number.isFinite(x)||!Number.isFinite(y)||x<15||y<15||x>1785||y>1785)return true;
   if(mapId===null)return false;
   const map=getMap(mapId);
+  if(map.bounds&&(x<map.bounds.minX+pad||x>map.bounds.maxX-pad||y<map.bounds.minY+pad||y>map.bounds.maxY-pad))return true;
   if(map.river&&Math.abs(x-map.river.x)<map.river.width/2+pad&&
     !map.bridges.some(cy=>Math.abs(y-cy)<65-pad))return true;
   if(map.lakes.some(lake=>((x-lake.x)/(lake.rx+pad))**2+((y-lake.y)/(lake.ry+pad))**2<1))return true;
@@ -82,6 +133,8 @@ export function constructionTerrainError(mapId,point){
     return 'Mantenha as pontes e suas entradas livres.';
   if(map.passages.some(p=>point.x>p.x-50&&point.x<p.x+p.w+50&&point.y>p.y-50&&point.y<p.y+p.h+50))
     return 'Mantenha as passagens deste mapa livres.';
+  if(map.trails?.some(t=>t.kind==='main'&&trailDistance(point,t)<t.width/2+50))
+    return 'Mantenha as trilhas principais livres para a passagem dos exércitos.';
   if(map.camps.some(c=>Math.hypot(point.x-c.x,point.y-c.y)<CAMP_BUILD_RADIUS))
     return 'Mantenha espaço livre ao redor dos acampamentos de mercenários.';
   return null;

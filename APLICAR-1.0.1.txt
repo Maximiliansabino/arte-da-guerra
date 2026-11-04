@@ -1,0 +1,36 @@
+ARTE DA GUERRA 1.0.1 — INTEGRAÇÃO SEM APAGAR O TRABALHO PARALELO
+
+BASE
+Repositório: https://github.com/Maximiliansabino/arte-da-guerra
+Branch consultada: main
+Commit base: b5791292ac2bfbda33875b279bcd835323f02915
+A entrega preserva os arquivos da 1.0.0 publicados pelo colaborador.
+Não houve push nem publicação automática desta atualização.
+
+PARA JOGAR SEM INTEGRAR CÓDIGO
+Guarde a pasta anterior. Extraia o ZIP completo em outra pasta.
+Abra INICIAR-JOGO.cmd ou execute npm start com Node.js 22+.
+Todos os participantes precisam acessar o mesmo servidor.
+
+PARA QUEM MANTÉM O GITHUB
+1. Guarde alterações locais: faça commit ou stash em sua cópia.
+2. Execute git fetch origin e confira novos commits do seu amigo.
+3. Crie uma branch de integração a partir da main atualizada.
+4. O patch arte-da-guerra-1.0.1.patch, ao lado da pasta do jogo no ZIP,
+   foi gerado contra o commit base acima. Dentro do repositório execute:
+   git apply --check /caminho/arte-da-guerra-1.0.1.patch
+5. Se passar, aplique com git apply /caminho/arte-da-guerra-1.0.1.patch.
+   Se houver conflito, faça a conciliação arquivo a arquivo. Não force
+   nem substitua a pasta inteira sobre trabalho novo.
+6. Rode npm test; teste entrada, senhas, prontidão e uma partida completa.
+7. Revise o diff e só então faça seu commit, PR e publicação habituais.
+
+CONTEÚDO
+Jogo completo, testes, documentação e patch. As ilustrações aprovadas
+na 1.0.0 estão dentro da pasta do jogo; o patch só contém as mudanças
+necessárias sobre a base, evitando duplicar imagens inalteradas.
+Não inclui segredos, configuração local de preview, node_modules ou .git.
+
+CONSULTE
+README.md: funcionamento, controles e execução em rede.
+VALIDACAO-1.0.1.md: verificações e limites observados nesta entrega.

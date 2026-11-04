@@ -1,32 +1,27 @@
-ARTE DA GUERRA 1.0.0
+ARTE DA GUERRA 1.0.1
 
-1. Guarde a pasta anterior e extraia TODO o ZIP para uma pasta separada.
-2. Reutilize Node.js 22 ou superior. Instale/atualize só se necessário: https://nodejs.org/
-3. No Windows, abra INICIAR-JOGO.cmd. No macOS/Linux, execute npm start.
-4. Abra http://localhost:3000 no navegador e mantenha o servidor ligado.
-5. Escolha sua tribo e treine contra a máquina ou crie uma sala com amigos.
+1. Guarde a pasta anterior e extraia TODO o ZIP para outra pasta.
+2. Reutilize Node.js 22 ou superior. Não precisa instalar dependências.
+3. No Windows abra INICIAR-JOGO.cmd. No macOS/Linux execute npm start.
+4. Abra http://localhost:3000 e mantenha o servidor ligado.
+5. Treine contra a máquina ou crie/encontre uma sala neste servidor.
 
-NOVIDADES VISUAIS 1.0.0
-Capa ilustrada, tropas e heróis com imagens próprias por tribo,
-construções em três estágios e novas minas de ouro e recursos.
-Cura dourada, proteção azul, dano laranja, controle violeta,
-movimento turquesa e ocultação cinza, com formas e animações próprias.
-Balões legíveis: largura estável, texto organizado e posição dentro da janela.
-Passe o mouse ou use o foco do teclado nos botões para ler efeito, custo e requisito.
+NOVIDADES
+Mapas com 4/8/12 locais possíveis para 2/3-4/5-8 participantes.
+Trilhas e flancos, bases a descobrir e mercenários fora das rotas obrigatórias.
+Salas públicas, cadeado com senha opcional e salas ocultas por convite.
+Jogadores confirmam Estou pronto antes de iniciar.
+Controles de toque, seleção por área, câmera com dois dedos e zoom por pinça.
+Descrição das ações por botão de informação ou toque prolongado.
+Mantidos arte, habilidades, custos e atributos de combate da versão 1.0.0.
 
-CONTROLES E PROGRESSÃO
-A R só libera no nível 5; o Colosso concede a segunda vaga de herói.
-Q/W/R: herói ativo; E: exclusivo; Alt+1/2/3: itens; Alt+4: item raro.
-Ctrl+1 a 9 salva grupos com toda a seleção própria; o número seleciona o grupo.
+AMIGOS E CELULAR
+Todos precisam abrir o MESMO servidor. Localhost só funciona no anfitrião.
+No celular, use de preferência a tela deitada. Veja controles em Como jogar.
+Leia README.md para IP local, ALLOWED_HOSTS, hospedagem e limitações.
+O ZIP não publica automaticamente uma versão online.
 
-ATUALIZAÇÃO DO REPOSITÓRIO
-Leia APLICAR-1.0.0.txt antes de integrar ao trabalho do seu amigo.
+ATUALIZAÇÃO EM PARALELO
+Leia APLICAR-1.0.1.txt antes de integrar ao trabalho do seu amigo.
 Não substitua às cegas arquivos de uma versão posterior do GitHub.
-
-AMIGOS
-Todos acessam o mesmo servidor. Localhost não funciona no computador
-convidado. Consulte README.md para IP local, ALLOWED_HOSTS e hospedagem.
-O ZIP não publica automaticamente o jogo na internet.
-
-VALIDAÇÃO
-Consulte VALIDACAO-1.0.0.md para testes executados e limites observados.
+Consulte VALIDACAO-1.0.1.md para os testes executados.

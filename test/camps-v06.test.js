@@ -48,7 +48,7 @@ for (const mapId of Object.keys(MAPS)) {
         assert.equal(entity.hp, STATS[entity.type].hp);
         assert.equal(entity.goldReward, config.gold);
         assert.equal(entity.xpReward, config.xp);
-        assert.equal(terrainBlocked(entity.x, entity.y, 10, mapId), false);
+        assert.equal(terrainBlocked(entity.x, entity.y, 10, r.mapId), false);
         assert.equal(guard.respawnAt, null);
       }
     }

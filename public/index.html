@@ -3,7 +3,7 @@
 <head>
  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
  <meta name="theme-color" content="#101721"><meta name="description" content="Estratégia em tempo real entre amigos. Quatro tribos originais, 24 heróis e decisões que mudam a batalha.">
- <title>Arte da Guerra · 1.0.0</title><link rel="stylesheet" href="/style.css">
+ <title>Arte da Guerra · 1.0.1</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/lobby-browser.css"><link rel="stylesheet" href="/mobile-controls.css">
 </head>
 <body>
 <header>
@@ -15,7 +15,7 @@
 <section id="welcome">
  <div class="welcome-art" aria-hidden="true"></div>
  <div class="intro">
-  <div class="eyebrow"><span class="ornament">◇</span> ESTRATÉGIA EM TEMPO REAL · 1.0.0</div>
+  <div class="eyebrow"><span class="ornament">◇</span> ESTRATÉGIA EM TEMPO REAL · 1.0.1</div>
   <h1>ARTE DA<br><em>GUERRA</em></h1>
   <p class="intro-manifest">Quatro tribos. Sua estratégia.</p>
   <p>Construa sua base. Escolha seu herói. Mude o rumo da batalha.<br>Da linha de frente ao cerco, cada decisão abre um caminho.</p>
@@ -24,17 +24,25 @@
 
  </div>
  <div class="entry">
-  <span class="entry-number">VERSÃO 1.0.0</span><div class="eyebrow">ENTRE NO CAMPO</div><h2>A batalha começa aqui.</h2>
+  <span class="entry-number">VERSÃO 1.0.1</span><div class="eyebrow">ENTRE NO CAMPO</div><h2>A batalha começa aqui.</h2>
   <label for="name">Nome do comandante</label><input id="name" maxlength="24" placeholder="Como seus amigos te chamam?" autocomplete="nickname">
-  <button class="primary" id="create">Criar sala com amigos <span>↗</span></button>
+  <button class="primary" id="create" type="button" aria-haspopup="dialog">Criar uma sala <span>↗</span></button>
+  <a class="browse-rooms-link" href="#room-directory">Encontrar uma sala aberta <span>↓</span></a>
   <div class="divider">JÁ RECEBEU UM CONVITE?</div>
   <label for="code">Código da sala</label><div class="join-row"><input id="code" placeholder="Cole o código aqui" maxlength="40"><button id="join">Entrar →</button></div>
   <div class="training-setting"><label for="training-tribe">Sua tribo no treino</label><select id="training-tribe"><option value="fort">Fortaleza</option><option value="forj">Forja</option><option value="vent">Vento</option><option value="puls">Pulso</option></select></div>
   <div class="training-setting"><label for="training-difficulty">Dificuldade do treino</label><select id="training-difficulty"><option value="easy">Fácil</option><option value="normal" selected>Normal</option><option value="hard">Difícil</option></select></div>
   <div class="training-setting training-map"><label for="training-map">Campo de treino</label><select id="training-map"><option value="three-bridges">Vale das Três Pontes</option></select></div>
   <button class="practice" id="practice"><span>⚔</span> Treinar: você contra uma máquina <span>→</span></button>
-  <p class="fine">Partidas por convite · Mouse e teclado · Sem cadastro no jogo</p>
+  <p class="fine">Salas abertas ou por convite · Computador e celular · Sem cadastro no jogo</p>
  </div>
+ <section id="room-directory" class="room-directory" aria-labelledby="room-directory-title">
+  <div class="room-directory-heading"><div><div class="eyebrow">ENCONTRE SUA PRÓXIMA BATALHA</div><h2 id="room-directory-title">Salas abertas</h2><p>Escolha uma sala deste servidor ou reúna sua própria companhia.</p></div><button id="refresh-rooms" type="button">Atualizar salas <span aria-hidden="true">↻</span></button></div>
+  <div class="room-directory-tools"><label class="room-filter" for="joinable-rooms"><input id="joinable-rooms" type="checkbox" checked> Apenas salas com vagas</label><span id="room-directory-count" class="room-count">Buscando salas…</span></div>
+  <p id="room-directory-status" class="room-directory-status" role="status" aria-live="polite">Consultando as salas disponíveis.</p>
+  <div id="room-list" class="room-list" aria-label="Salas disponíveis" aria-busy="true"></div>
+  <p class="room-directory-note">Salas com cadeado pedem senha. As salas por convite não aparecem nesta lista.</p>
+ </section>
  <div class="legend-ribbon tribe-ribbon" aria-label="Conheça as quatro tribos e seus heróis"><span>QUATRO FORMAS DE LUTAR<br>EXPLORE CADA TRIBO</span><div><button id="tribe-fort" type="button" aria-haspopup="dialog"><span class="tribe-symbol fort-symbol">▣</span><span>Fortaleza<small>Proteção e posição</small></span></button><button id="tribe-forj" type="button" aria-haspopup="dialog"><span class="tribe-symbol forj-symbol">⚒</span><span>Forja<small>Pressão e demolição</small></span></button><button id="tribe-vent" type="button" aria-haspopup="dialog"><span class="tribe-symbol vent-symbol">➤</span><span>Vento<small>Mobilidade e flanco</small></span></button><button id="tribe-puls" type="button" aria-haspopup="dialog"><span class="tribe-symbol puls-symbol">◎</span><span>Pulso<small>Controle e oportunidade</small></span></button></div></div>
 </section>
 <section id="game" hidden>
@@ -42,16 +50,17 @@
  <div class="arena">
   <canvas id="map" tabindex="0" aria-label="Campo de batalha. Clique ou arraste para selecionar. Clique direito para mover ou agir. Q, W e R ativam habilidades do herói."></canvas>
   <div class="map-caption"><span class="live-dot"></span> <b id="map-caption-name">Vale das Três Pontes</b> <span>CAMPO DE BATALHA</span></div>
-  <aside id="camp-legend" class="camp-legend" aria-label="Mercenários e posições iniciais" hidden><div><span class="camp-easy">● Fácil</span><span class="camp-medium">◆ Médio</span><span class="camp-hard">▲ Difícil</span></div><p><b>✦ Colosso</b> libera a 2ª vaga de herói</p><small>Retorno individual: 2 min · □ início sorteado</small></aside>
+  <aside id="camp-legend" class="camp-legend" aria-label="Mercenários e posições iniciais" hidden><div><span class="camp-easy">● Fácil</span><span class="camp-medium">◆ Médio</span><span class="camp-hard">▲ Difícil</span></div><p><b>✦ Colosso</b> libera a 2ª vaga de herói</p><small>Retorno individual: 2 min · ◇ locais possíveis · descubra as bases</small></aside>
   <aside id="idle-panel" class="idle-panel" aria-label="Unidades sem ação" hidden><div class="idle-heading">SEM AÇÃO <b id="idle-total">0</b></div><div id="idle-units"></div><small>Clique para selecionar</small></aside>
   <div id="lobby" class="lobby">
-   <div class="lobby-heading"><div class="eyebrow">ANTES DA BATALHA</div><span id="lobby-version" class="version-badge">Versão __GAME_VERSION__</span></div><h2>A companhia se reúne.</h2><p>Escolha como jogar e convide sua equipe.</p>
+   <div class="lobby-heading"><div class="eyebrow">ANTES DA BATALHA</div><span id="lobby-version" class="version-badge">Versão __GAME_VERSION__</span></div><h2>A companhia se reúne.</h2><p id="room-access-summary">Escolha como jogar e convide sua equipe.</p>
    <button id="lobby-hero-guide" class="lobby-guide-button" type="button" aria-haspopup="dialog">✦ Conheça os heróis <span>Histórias, forças e fraquezas →</span></button>
    <div class="lobby-tabs" role="tablist" aria-label="Preparar a partida"><button id="lobby-settings-tab" role="tab" aria-selected="true">Partida</button><button id="lobby-players-tab" role="tab" aria-selected="false">Companhia</button></div><div id="lobby-settings-page" role="tabpanel"><div class="lobby-settings"><div><label for="mode">Modo de partida</label><select id="mode" aria-describedby="modehint"><option value="ffa">Todos contra todos</option><option value="duos">Duplas · 2 contra 2</option><option value="coop">Amigos contra máquinas</option><option value="duel">Treino · 1 contra 1 máquina</option></select><p id="modehint" class="fine">O anfitrião escolhe o modo.</p></div><div><label for="faction">Sua tribo</label><select id="faction" aria-describedby="factionhint"><option value="fort">Fortaleza</option><option value="forj">Forja</option><option value="vent">Vento</option><option value="puls">Pulso</option></select><p id="factionhint" class="fine">Cada tribo tem seis heróis e uma tropa exclusiva.</p></div></div>
    <div class="difficulty-setting"><label for="difficulty">Estratégia das máquinas</label><select id="difficulty" aria-describedby="difficultyhint"><option value="easy">Fácil</option><option value="normal">Normal</option><option value="hard">Difícil</option></select><p id="difficultyhint" class="fine">Escolha a dificuldade antes da partida.</p></div>
-   <div class="difficulty-setting map-setting"><label for="map-choice">Campo de batalha</label><select id="map-choice" aria-describedby="maphint"><option value="three-bridges">Vale das Três Pontes</option></select><p id="maphint" class="fine">O anfitrião escolhe o mapa. As posições iniciais são sorteadas a cada partida.</p></div>
+   <div class="difficulty-setting map-setting"><label for="map-choice">Campo de batalha</label><select id="map-choice" aria-describedby="maphint"><option value="three-bridges">Vale das Três Pontes</option></select><p id="maphint" class="fine">O anfitrião escolhe o mapa. O campo acompanha a quantidade de participantes; explore as trilhas para descobrir as bases.</p></div>
    <div id="bot-count-setting" class="difficulty-setting" hidden><label for="bot-count">Máquinas adversárias</label><select id="bot-count"><option value="0">Automático · uma por jogador</option><option value="1">1 máquina</option><option value="2">2 máquinas</option><option value="3">3 máquinas</option><option value="4">4 máquinas</option></select></div></div><div id="lobby-players-page" role="tabpanel" hidden><div id="players"></div></div><p id="match-summary" class="match-summary"></p>
    <div class="invite"><div><small>CÓDIGO DO CONVITE</small><code id="roomcode"></code></div><button id="copy">Copiar convite ↗</button></div>
+   <section id="readiness-controls" class="readiness-controls" aria-label="Preparação dos jogadores" hidden><div class="readiness-heading"><strong id="readiness-summary">Confirme sua preparação.</strong><button id="ready-player" type="button" aria-pressed="false">Estou pronto</button></div><ul id="readiness-list" class="readiness-list"></ul><p id="readiness-error" class="room-form-error" role="status" hidden></p></section>
    <button id="start" class="primary">Iniciar a batalha <span>→</span></button><p class="fine" id="lobbyhint">Aguardando os comandantes.</p>
   </div>
   <div id="end" class="lobby end-card" hidden><div class="eyebrow">BATALHA ENCERRADA</div><div class="victory-sigil">✦</div><h2 id="winner"></h2><p>A última equipe com cidadelas em pé vence.</p><button id="again" class="primary">Reunir a companhia novamente <span>→</span></button></div>
@@ -70,12 +79,35 @@
  <div class="footerbar"><span id="connection">◌ Conectando à partida</span><span id="objective">PROTEJA SUA BASE. CONQUISTE O CAMPO.</span><button id="leave">Sair da sala</button><button id="surrender">Render-se</button></div>
 </section>
 <div id="toast" role="status" hidden></div>
+<dialog id="create-room-dialog" class="room-dialog" aria-labelledby="create-room-title">
+ <button id="close-create-room" class="close" type="button" aria-label="Fechar criação de sala">✕</button>
+ <div class="eyebrow">REÚNA SUA COMPANHIA</div><h2 id="create-room-title">Criar uma sala</h2>
+ <form id="create-room-form">
+  <label for="room-name">Nome da sala</label><input id="room-name" maxlength="48" placeholder="Ex.: Duplas entre amigos" required>
+  <label for="room-visibility">Quem pode encontrar a sala?</label><select id="room-visibility"><option value="public">Pública · aparece na lista de salas</option><option value="unlisted">Por convite · não aparece na lista</option></select>
+  <label class="room-filter room-password-toggle" for="room-password-enabled"><input id="room-password-enabled" type="checkbox"> Proteger a entrada com senha</label>
+  <div id="create-password-fields" hidden><label for="room-password">Senha da sala</label><input id="room-password" type="password" minlength="4" maxlength="64" autocomplete="new-password" aria-describedby="room-password-help"><p id="room-password-help" class="fine">De 4 a 64 caracteres. Compartilhe a senha apenas com quem deseja convidar.</p></div>
+  <p id="create-room-error" class="room-form-error" role="alert" hidden></p>
+  <button id="confirm-create-room" class="primary" type="submit">Criar e entrar <span>→</span></button>
+ </form>
+</dialog>
+<dialog id="join-room-dialog" class="room-dialog" aria-labelledby="join-room-title">
+ <button id="close-join-room" class="close" type="button" aria-label="Fechar entrada na sala">✕</button>
+ <div class="eyebrow">ENTRE NA COMPANHIA</div><h2 id="join-room-title">Entrar na sala</h2>
+ <form id="join-room-form">
+  <label for="join-room-code">Código da sala</label><input id="join-room-code" maxlength="64" autocomplete="off" spellcheck="false" required>
+  <label for="join-room-password">Senha <span id="join-password-optional">(se houver)</span></label><input id="join-room-password" type="password" maxlength="64" autocomplete="off" aria-describedby="join-room-help">
+  <p id="join-room-help" class="fine">Use a senha informada pelo anfitrião. Salas abertas não precisam de senha.</p>
+  <p id="join-room-error" class="room-form-error" role="alert" hidden></p>
+  <button id="confirm-join-room" class="primary" type="submit">Entrar na sala <span>→</span></button>
+ </form>
+</dialog>
 <dialog id="selection-info" aria-labelledby="selection-info-title"><button id="selection-info-close" class="close" aria-label="Fechar atributos">✕</button><h2 id="selection-info-title">Sua seleção</h2><p id="selection-info-detail"></p></dialog>
 <dialog id="instructions">
  <button id="closehelp" class="close" aria-label="Fechar manual">✕</button><div class="eyebrow">MANUAL DE COMBATE</div><h2>Sua companhia. Sua estratégia.</h2>
  <p>Um jogo original de estratégia em tempo real. Fortaleza, Forja, Vento e Pulso são tribos fictícias, com heróis, construções e estilos de combate próprios.</p>
  <ol>
-  <li><b>Escolha a partida.</b> Jogue todos contra todos, em duplas de 2 contra 2, em companhia de até quatro amigos contra uma a quatro máquinas ou treine sozinho contra uma máquina. O anfitrião escolhe entre três mapas e a estratégia das máquinas: fácil, normal ou difícil. As posições iniciais são sorteadas a cada partida, mantendo aliados do mesmo lado nos modos de equipe. Os quadrados vazios no minimapa marcam as posições iniciais conhecidas por todos.</li>
+  <li><b>Escolha a partida.</b> Entre em uma sala aberta na lista, use a senha de uma sala protegida ou crie uma sala por convite. Escolha sua tribo e marque <b>Estou pronto</b>; o anfitrião inicia quando todos estiverem preparados. Jogue todos contra todos, em duplas de 2 contra 2, em companhia de até quatro amigos contra uma a quatro máquinas ou treine sozinho contra uma máquina. O anfitrião escolhe entre três mapas e a estratégia das máquinas: fácil, normal ou difícil. As posições iniciais são sorteadas a cada partida, mantendo aliados próximos nos modos de equipe. Explore para encontrar as bases adversárias; as posições iniciais inimigas não são reveladas no minimapa.</li>
   <li><b>Reúna recursos.</b> Selecione trabalhadores e use <b>Minerar ouro</b> ou <b>Coletar madeira</b>. Havendo recurso próximo, a coleta começa com um clique; caso contrário, escolha o recurso no mapa. Quando uma árvore ou jazida acaba, os trabalhadores procuram outro recurso do mesmo tipo, acessível nas proximidades. Sem alternativa, o quadro Sem ação avisa. O clique direito continua funcionando. O balanço da ferramenta, as partículas e o painel indicam quando a coleta está ocorrendo. Ouro e madeira entram diretamente no saldo.</li>
   <li><b>Acompanhe a produção.</b> Selecione uma construção para ver os pedidos na ordem: o primeiro está <b>em produção</b>, com progresso e tempo restante; os seguintes estão <b>em espera</b>. Selecione vários quartéis para pedir uma unidade em cada quartel apto com um clique: o botão mostra a quantidade e o custo total. Quartéis em obra, evolução, pesquisa ou treinamento coletivo, com fila cheia ou sem o nível necessário ficam de fora, com indicação no painel. Quartéis que já recrutam continuam recebendo pedidos até o limite da fila. Se faltar recurso ou espaço na população para o pedido completo, nada é cobrado. As filas aparecem separadas por construção. Se a saída estiver bloqueada, a unidade pronta aguarda sem perder sua posição. Obras, pesquisas e evoluções também mostram o progresso no painel.</li>
   <li><b>Expanda com cuidado.</b> Escolha um terreno a até 300 passos de uma construção própria pronta, ligada à cidadela. O trabalhador caminha até o local e inicia a obra ao chegar; os recursos são cobrados apenas quando a construção começa. Um caminho bloqueado é indicado no painel. Obras incompletas não ampliam o território. Mantenha 360 passos das cidadelas inimigas. A prévia verde indica um local válido; a vermelha explica o bloqueio. Pontes e terrenos bloqueados precisam ficar livres.</li>
@@ -86,12 +118,13 @@
   <li><b>Organize seus grupos.</b> Selecione o grupo e pressione <b>Ctrl + 1 a 9</b> (ou Command no Mac) para salvá-lo. A tecla numérica sozinha seleciona o grupo inteiro; não há limite de 12 por grupo. A barra Seus grupos mostra os grupos e suas quantidades. Unidades perdidas saem automaticamente do grupo.</li>
   <li><b>Use magia com intenção.</b> As habilidades aparecem mesmo com soldados e herói no mesmo grupo. Use os botões ou <b>Q, W e R</b> sem desfazer a seleção. Se houver dois heróis, clique no nome ou use <b>Tab</b> para alternar o herói ativo. Habilidades gastam mana e têm tempo de recarga; as que exigem alvo mostram o alcance antes de lançar. O golpe supremo R libera somente no nível heroico 5. Experiência de combate aumenta o nível heroico até 5.</li>
   <li><b>Equipe e evolua.</b> Construções evoluem individualmente até o nível III. Em um Quartel III, compre <b>treinamento coletivo</b> para melhorar as tropas militares atuais e futuras de uma só vez. Trabalhadores evoluem pela pesquisa de coleta; heróis evoluem pela experiência. A experiência do herói permanece independente. Armas e proteção da oficina exigem um Quartel III pronto; coleta pode ser pesquisada antes. Custos e duração aparecem no painel. Itens continuam disponíveis perto de um Salão de Heróis próprio.</li>
-  <li><b>Explore em equipe.</b> Aliados compartilham visão. A névoa oculta adversários fora do alcance de suas unidades. Use as pontes, explore acampamentos e proteja os caminhos de reforço. Ataques e magias ofensivas não ferem aliados.</li>
+  <li><b>Explore em equipe.</b> Aliados compartilham visão. A névoa oculta adversários fora do alcance de suas unidades. Os losangos no minimapa indicam locais possíveis para bases, sem revelar quem os ocupa. Siga as trilhas principais para chegar ao rival sem enfrentar mercenários ou use as rotas laterais para flanquear. Acampamentos ficam em desvios: você escolhe quando disputar suas recompensas. Proteja as pontes e os caminhos de reforço. Ataques e magias ofensivas não ferem aliados.</li>
   <li><b>Enfrente os mercenários.</b> Acampamentos fáceis, médios e difíceis têm forças e recompensas diferentes. O colosso desperta aos 7min30s e exige um exército preparado e libera a segunda vaga de herói, até o limite de duas. Quando o círculo de impacto surgir, tire suas unidades da área antes do golpe. Cada mercenário retorna ao próprio acampamento <b>dois minutos após morrer</b>, inclusive o colosso. Os relógios de retorno aparecem enquanto você ou um aliado enxergam o acampamento; fora da visão, a informação é apenas a última observação.</li>
   <li><b>Itens raros.</b> A primeira morte de cada mercenário original tem 1% de chance total de gerar um consumível. Seus reaparecimentos continuam em dois minutos e não sorteiam itens. Apenas o dono do golpe final pode recolher o drop com um herói; clique direito no item para aproximar e recolher. Expira no chão após 60 s. Cada jogador pode carregar um item raro, em espaço separado das compras. O item é perdido se o portador morrer. Após usar, a equipe aguarda 20 s para usar outro do mesmo tipo. Passe o mouse sobre qualquer ação para ler efeitos, custos e requisitos.</li>
   <li><b>Defenda a cidadela.</b> Perdê-la elimina seu exército; sua equipe pode continuar enquanto um aliado mantiver a própria cidadela. A última equipe sobrevivente vence.</li>
  </ol>
  <div class="manual-controls"><b>Controles</b><p>As setas movem a câmera; arraste com o botão do meio ou use as bordas. W, A, S e D não movem a tela. A roda ajusta o zoom. Espaço centraliza a cidadela. Shift adiciona à seleção. Duplo clique seleciona unidades do mesmo tipo. X interrompe ordens; Esc cancela o alvo ou a construção. Q/W/R usam habilidades do herói ativo. F1 seleciona e alterna entre seus heróis; Tab alterna o herói ativo dentro do grupo, mantendo o grupo selecionado. Alt + 1, 2 e 3 usam itens comprados do herói ativo; Alt + 4 prepara o item raro. E ativa um exclusivo pronto da seleção. Ctrl (ou Command) + 1 a 9 salva grupos; 1 a 9 os seleciona. A prepara uma ordem de avançar atacando. Com uma construção de recrutamento selecionada, clique direito define o ponto de encontro das novas unidades.</p></div>
+ <div class="manual-controls"><b>No celular</b><p>Os controles aparecem ao tocar a tela; o botão <b>Toque</b> também permite ativá-los ou desativá-los. Toque para selecionar; arraste para mover a câmera. Dois dedos deslocam o campo e a pinça ajusta o zoom. Use <b>Área</b> para selecionar em retângulo e <b>＋</b> para somar unidades. <b>Mover/agir</b> seguido de um toque move, coleta, conserta ou ataca conforme o alvo; com prédios selecionados, define a bandeira. <b>Atacar</b> prepara avanço atacando e <b>Cancelar</b> encerra a mira. <b>Base</b> centraliza sua cidadela; <b>Herói</b> alterna entre dois heróis do grupo sem desfazer a seleção. Em <b>Grupos</b>, salve ou recupere os grupos de 1 a 9 e ative <b>Efeitos leves</b> quando preferir. Use <b>ⓘ</b> e toque na ação, ou mantenha a ação pressionada, para ler a explicação sem executá-la. A posição deitada é recomendada; a posição em pé também funciona.</p></div>
  <p class="fine">O som é opcional. As partidas ficam na memória do servidor e terminam se ele reiniciar. Tribos, personagens e histórias são criações fictícias e originais deste jogo.</p>
 </dialog>
 <dialog id="hero-guide" class="hero-guide" aria-labelledby="hero-guide-title">

@@ -1,3 +1,6 @@
+import {initRoomBrowser} from '../public/room-browser.js';
+import {createMapArt} from '../public/map-art.js';
+import {initTouchControls, touchPixelRatio} from '../public/touch-controls.js';
 import * as catalog from '../public/tribes-data.js';
 import {tooltipText} from '../public/tooltips.js';
 import test from 'node:test';
@@ -82,7 +85,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    hitTestPainted,paintedHealthTop,
+    hitTestPainted,paintedHealthTop,initTouchControls,touchPixelRatio,initRoomBrowser,createMapArt,
     ...catalog, tooltipText, initTooltips:()=>({}), heroPortrait:()=>new Element('canvas'), ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), createCombatEffects, createSceneArt, drawMercenary, NEUTRAL_ART, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
@@ -91,7 +94,7 @@ function harness(initial = fixture()) {
     setTimeout: callback => {timers.push(callback); return timers.length;}, clearTimeout() {},
     document: {querySelector(selector) {assert.ok(elements.has(selector), `Missing actual HTML element ${selector}`); return elements.get(selector);}, createElement: tag => new Element(tag)},
     window: {}, navigator: {}, confirm: () => false,
-    fetch: async (url, options) => {requests.push({url, options, body: JSON.parse(options.body)}); return {ok: true, json: async () => ({ok: true})};},
+    fetch: async (url, options) => {if(url==='/api/rooms')return {ok:true,json:async()=>({rooms:[]})};requests.push({url, options, body: JSON.parse(options.body)}); return {ok: true, json: async () => ({ok: true})};},
     initial
   };
   const context = vm.createContext(sandbox);
@@ -660,4 +663,98 @@ test('cliente: rochas e cristais dos mapas não herdam a largura das trilhas', (
     const outlines=h.calls.filter(call=>call.name==='stroke');assert.ok(outlines.length>0);
     assert.ok(outlines.every(call=>call.lineWidth>0&&call.lineWidth<=3),`${mapId}: contornos de obstáculos precisam permanecer finos`);
   }
+});
+
+test('cliente 1.0.1: criação envia visibilidade e senha sem persistir credenciais da sala', async () => {
+  const h=harness(),posts=[],stored=[];
+  h.run('session=null; reconnecting=true');
+  h.elements.get('#name').value='Ana';
+  h.sandbox.localStorage.setItem=(key,value)=>stored.push({key,value});
+  h.sandbox.sessionStorage.setItem=(key,value)=>stored.push({key,value});
+  h.sandbox.fetch=async(url,options)=>{posts.push({url,body:JSON.parse(options.body),authorization:options.headers.Authorization});return {ok:true,json:async()=>({id:'p1',code:'fortaleza',token:'session-token'})};};
+  h.elements.get('#create').onclick();
+  assert.equal(h.elements.get('#create-room-dialog').open,true);
+  h.elements.get('#room-name').value='Duplas da noite';
+  h.elements.get('#room-visibility').value='unlisted';
+  h.elements.get('#room-password-enabled').checked=true;
+  h.elements.get('#room-password').value='senha-da-companhia';
+  await h.elements.get('#create-room-form').onsubmit({preventDefault(){}});
+  assert.deepEqual(posts,[{url:'/api/create',body:{name:'Ana',code:'',roomName:'Duplas da noite',visibility:'unlisted',password:'senha-da-companhia'},authorization:undefined}]);
+  assert.equal(h.elements.get('#create-room-dialog').open,false);
+  assert.equal(h.elements.get('#welcome').hidden,true);
+  assert.equal(h.elements.get('#game').hidden,false);
+  assert.ok(stored.some(item=>item.key==='arte-da-guerra-session'));
+  assert.ok(stored.every(item=>!item.value.includes('senha-da-companhia')));
+  assert.equal(h.sandbox.location.search,'');
+});
+
+test('cliente 1.0.1: senha rejeitada mantém diálogo aberto e permite corrigir o convite', async () => {
+  const h=harness(),posts=[];
+  h.run('session=null; reconnecting=true');
+  h.elements.get('#welcome').hidden=false;h.elements.get('#game').hidden=true;
+  h.elements.get('#name').value='Bia';h.elements.get('#code').value='fortaleza';
+  h.sandbox.fetch=async(url,options)=>{const body=JSON.parse(options.body);posts.push({url,body});return body.password==='certa'?{ok:true,json:async()=>({id:'p2',code:'fortaleza',token:'session-token'})}:{ok:false,json:async()=>({error:'Senha incorreta.'})};};
+  h.elements.get('#join').onclick();
+  h.elements.get('#join-room-password').value='errada';
+  await h.elements.get('#join-room-form').onsubmit({preventDefault(){}});
+  assert.equal(h.elements.get('#join-room-dialog').open,true);
+  assert.equal(h.elements.get('#join-room-error').textContent,'Senha incorreta.');
+  assert.equal(h.elements.get('#join-room-error').hidden,false);
+  assert.equal(h.elements.get('#welcome').hidden,false);
+  assert.equal(h.elements.get('#game').hidden,true);
+  assert.equal(h.run('session'),null);
+  h.elements.get('#join-room-password').value='certa';
+  await h.elements.get('#join-room-form').onsubmit({preventDefault(){}});
+  assert.deepEqual(posts.map(post=>post.body),[{name:'Bia',code:'fortaleza',password:'errada'},{name:'Bia',code:'fortaleza',password:'certa'}]);
+  assert.equal(h.elements.get('#join-room-dialog').open,false);
+  assert.equal(h.elements.get('#game').hidden,false);
+});
+
+test('cliente 1.0.1: preparação confirmada pelo servidor libera início somente ao anfitrião', async () => {
+  const initial=fixture();initial.phase='lobby';
+  initial.roomInfo={name:'Companhia',visibility:'public',locked:false,requiresReady:true,hostId:'p1',allReady:false};
+  initial.players[0].ready=true;initial.players[1].ready=false;
+  initial.players.push({...initial.players[1],id:'bot',slot:2,name:'Máquina',bot:true,ready:true});
+  const h=harness(initial);h.run('updateUI()');
+  assert.equal(h.elements.get('#start').disabled,true);
+  assert.equal(h.elements.get('#readiness-summary').textContent,'1/2 jogadores prontos');
+  assert.equal(h.elements.get('#readiness-list').children.length,2);
+  await h.elements.get('#ready-player').onclick();
+  assert.deepEqual(h.requests.at(-1).body,{action:'ready',ready:false});
+  assert.equal(h.elements.get('#ready-player').getAttribute('aria-pressed'),'true','somente um snapshot confirmado altera a preparação');
+  initial.players[1].ready=true;initial.roomInfo.allReady=true;h.run('updateUI()');
+  assert.equal(h.elements.get('#start').disabled,false);
+  h.run("session.id='p2';updateUI()");
+  assert.equal(h.elements.get('#start').disabled,true,'jogador convidado não inicia a sala');
+  h.run("session.id='p1';lobbyPending=1;updateUI()");
+  assert.equal(h.elements.get('#start').disabled,true,'uma configuração em trânsito bloqueia o início');
+});
+
+test('cliente 1.0.1: variante proporcional mantém a família selecionada no lobby', async () => {
+  const initial=fixture();initial.phase='lobby';const h=harness(initial);
+  for(const [index,family] of Object.keys(terrain.MAPS).entries()){
+    initial.mapFamilyId=family;initial.mapId=terrain.resolveMapId(family,[2,4,8][index],1);h.run('updateUI()');
+    assert.equal(h.elements.get('#map-choice').value,family);
+    assert.ok(h.elements.get('#map-choice').children.some(option=>option.value===family));
+    assert.equal(h.elements.get('#battlefield-map-name').textContent,terrain.getMap(initial.mapId).name);
+    assert.match(h.elements.get('#maphint').textContent,new RegExp(`${[4,8,12][index]} locais possíveis`));
+    delete initial.mapFamilyId;h.run('updateUI()');
+    assert.equal(h.elements.get('#map-choice').value,family,'a variante também informa sua família sem campo redundante');
+  }
+  h.elements.get('#map-choice').value='three-bridges';await h.elements.get('#map-choice').onchange();
+  assert.deepEqual(h.requests.at(-1).body,{action:'map',mapId:'three-bridges'});
+});
+
+test('cliente 1.0.1: minimapa indica locais possíveis sem atribuir bases aos rivais ocultos', () => {
+  const initial=fixture();initial.mapId=terrain.resolveMapId('crystal-ridge',4,1);
+  const map=terrain.getMap(initial.mapId),own=map.spawnSites[0];
+  initial.entities=[];initial.startingPositions=[{slot:0,x:own.x,y:own.y}];
+  initial.fog={cols:1,rows:1,cell:rules.WORLD,visible:[],explored:[]};
+  const h=harness(initial);h.calls.length=0;h.run('drawMinimap()');
+  const sites=h.calls.filter(call=>call.name==='stroke'&&call.strokeStyle==='#b3b39e88');
+  assert.equal(sites.length,map.capacity,'todos os locais recebem o mesmo losango neutro');
+  const assigned=h.calls.filter(call=>call.name==='strokeRect'&&call.args[2]===8&&call.args[3]===8);
+  assert.equal(assigned.length,1);
+  assert.equal(assigned[0].strokeStyle,matchConfig.TEAM_COLORS[0]);
+  assert.equal(h.calls.some(call=>['stroke','strokeRect','fillRect'].includes(call.name)&&(call.strokeStyle===matchConfig.TEAM_COLORS[1]||call.fillStyle===matchConfig.TEAM_COLORS[1])),false,'a presença de um rival no placar não revela a base dele');
 });
