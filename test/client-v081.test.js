@@ -1,3 +1,6 @@
+import {initRoomBrowser} from '../public/room-browser.js';
+import {createMapArt} from '../public/map-art.js';
+import {initTouchControls, touchPixelRatio} from '../public/touch-controls.js';
 import * as catalog from '../public/tribes-data.js';
 import {tooltipText} from '../public/tooltips.js';
 import test from 'node:test';
@@ -82,7 +85,7 @@ function harness(initial = fixture()) {
   elements.get('#map').getContext = () => context2d;
   const storage = () => ({getItem: () => null, setItem() {}, removeItem() {}});
   const sandbox = {
-    hitTestPainted,paintedHealthTop,
+    hitTestPainted,paintedHealthTop,initTouchControls,touchPixelRatio,initRoomBrowser,createMapArt,
     ...catalog, tooltipText, initTooltips:()=>({}), heroPortrait:()=>new Element('canvas'), ...rules, ...legends, ...matchConfig, ...aiConfig, ...terrain, ...heroRoster, ...campConfig, planRecruitment, trainerFor, initHeroGuide:()=>({}), NEUTRAL_ART, drawMercenary:()=>false, createCombatEffects, createSceneArt, createSpellEffects, createAudio, performance: {now: () => 1000}, devicePixelRatio: 1,
     localStorage: storage(), sessionStorage: storage(),
     location: {search: '', href: 'http://localhost:3000/'}, URLSearchParams, URL,
@@ -91,7 +94,7 @@ function harness(initial = fixture()) {
     setTimeout: callback => {timers.push(callback); return timers.length;}, clearTimeout() {},
     document: {querySelector(selector) {assert.ok(elements.has(selector), `Missing actual HTML element ${selector}`); return elements.get(selector);}, createElement: tag => new Element(tag)},
     window: {}, navigator: {}, confirm: () => false,
-    fetch: async (url, options) => {requests.push({url, options, body: JSON.parse(options.body)}); return {ok: true, json: async () => ({ok: true})};},
+    fetch: async (url, options) => {if(url==='/api/rooms')return {ok:true,json:async()=>({rooms:[]})};requests.push({url, options, body: JSON.parse(options.body)}); return {ok: true, json: async () => ({ok: true})};},
     initial
   };
   const context = vm.createContext(sandbox);
@@ -201,4 +204,23 @@ test('v0.9: item raro usa Alt4, mira própria e aceita sinalizador sobre área e
 });
 test('v0.9: coleta do drop aproxima e só então envia pickup; cancelar impede coleta pendente',async()=>{
  const h=harness(),hero=entity(20,'fort_01');h.initial.entities.push(hero);h.initial.lootDrops=[{id:88,item:'drop_fog',owner:'p1',x:600,y:220,expiresAt:61}];h.select(20);await h.run('pickupLoot(state.lootDrops[0])');assert.equal(h.requests.at(-1).body.type,'move');assert.equal(h.run('pendingPickup.drop'),88);hero.x=580;h.run('updateUI()');await Promise.resolve();assert.deepEqual(h.requests.at(-1).body,{ids:[20],type:'pickupDrop',dropId:88});hero.x=400;await h.run('pickupLoot(state.lootDrops[0])');h.run("send({type:'stop',ids:[20]})");assert.equal(h.run('pendingPickup'),null);
+});
+
+test('v1.0.1: toque seleciona sem ordenar e Mover/agir reutiliza coleta e ataque contextuais',async()=>{
+ const h=harness();h.run('camera={x:500,y:300};zoom=1;cw=1000;ch=600');
+ await h.run('touchMapTap({x:300,y:350})');assert.deepEqual(selectedIds(h),[3]);assert.equal(h.requests.length,0);
+ h.initial.resources.push({id:77,type:'gold',x:500,y:350,amount:1000});
+ h.run('contextOrderAt({x:500,y:350})');await Promise.resolve();assert.deepEqual(h.requests.at(-1).body,{ids:[3],type:'gather',target:77});
+ h.initial.entities.push(entity(99,'soldier','p2',600,350));h.run('contextOrderAt({x:600,y:350})');await Promise.resolve();assert.deepEqual(h.requests.at(-1).body,{ids:[3],type:'attack',target:99});
+});
+test('v1.0.1: botão Herói alterna habilidades sem desfazer o grupo e toque confirma alvo unitário',async()=>{
+ const h=harness();h.initial.entities.push(entity(20,'fort_01'),entity(21,'fort_02'),entity(22,'soldier','p1',440,220));
+ h.run('selected=new Set([20,21,22]);activeHeroId=20;refreshActions();cycleTouchHero()');assert.deepEqual(selectedIds(h),[20,21,22]);assert.equal(h.run('activeHeroId'),21);
+ h.run('activateHero(20);camera={x:500,y:300};zoom=1;cw=1000;ch=600');press(h,'q');await h.run('touchMapTap({x:440,y:220})');
+ assert.deepEqual(h.requests.at(-1).body,{ids:[20],type:'cast',ability:'fort_01_q',x:440,y:220,target:22});assert.deepEqual(selectedIds(h),[20,21,22]);assert.equal(h.run('spellTarget'),null);
+});
+test('v1.0.1: somar seleção por toque permite reunir quartéis; área seleciona tropas próprias',async()=>{
+ const h=harness();h.initial.entities.push(entity(10,'barracks','p1',500,350),entity(11,'barracks','p1',650,350),entity(12,'soldier','p1',550,450),entity(13,'soldier','p2',600,450));
+ h.run('camera={x:500,y:300};zoom=1;cw=1000;ch=600');await h.run('touchMapTap({x:500,y:350});touchMapTap({x:650,y:350},true)');assert.deepEqual(selectedIds(h),[10,11]);
+ h.run('selectMapArea({x:480,y:400},{x:680,y:500})');assert.deepEqual(selectedIds(h),[12]);assert.equal(h.requests.length,0);
 });

@@ -1,3 +1,6 @@
+import {initRoomBrowser} from './room-browser.js';
+import {createMapArt} from './map-art.js';
+import {initTouchControls, touchPixelRatio} from './touch-controls.js';
 import {initTooltips, tooltipText} from './tooltips.js';
 import {heroPortrait} from './portraits.js';
 import {HERO_CATALOG, TRIBES, EXCLUSIVE_CATALOG, DROP_CATALOG, entityName, entityDefinition} from './tribes-data.js';
@@ -27,6 +30,7 @@ import {createCombatEffects} from './combat-effects.js';
 const $=s=>document.querySelector(s), canvas=$('#map');
 let ctx=canvas.getContext('2d');
 const colors = TEAM_COLORS;
+const mapArt=createMapArt();
 const sceneArt = createSceneArt(), spellEffects = createSpellEffects(), audio = createAudio();
 const environmentArt=typeof createEnvironmentArt==='function'?createEnvironmentArt():null;
 let spellTarget = null, attackTarget = false, rallyTarget = null, workTarget = null, rosterKey = '', idleKey = '';
@@ -36,7 +40,8 @@ let actionTab=null, actionSelection='', productionViewId=null, productionNavKey=
 const controlGroups = new Map();
 let controlRoom = null, controlKey = '', activeHeroId = null;
 let pendingPickup=null, pickupSerial=0;
-const reducedMotion=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false;
+const systemReducedMotion=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false;
+let reducedMotion=systemReducedMotion, touchControls=null;
 spellEffects.setReducedMotion?.(reducedMotion);
 const labels = new Proxy(LABELS,{get:(base,type)=>entityName(type,mine()?.faction || 'fort') || base[type]});
 const nameOf=e=>entityName(e,e?.faction || mine()?.faction || 'fort');
@@ -52,12 +57,12 @@ const invite=new URLSearchParams(location.search).get('room');if(invite)$('#code
 $('#name').value=localStorage.getItem('arte-da-guerra-name')||'';
 function toast(text){$('#toast').textContent=text;$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,4500);}
 async function api(path,data){const url=`/api/${path}${session?'?room='+session.code:''}`;const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...(session?{Authorization:`Bearer ${session.token}`}:{})},body:JSON.stringify(data)});const b=await res.json();if(!res.ok)throw Error(b.error||'O servidor não respondeu.');return b;}
-async function enter(mode) {
+async function enter(mode, options={}) {
  try {
   audio.unlock();
   const name = $('#name').value.trim() || 'Comandante';
   localStorage.setItem('arte-da-guerra-name', name);
-  session = await api(mode === 'join' ? 'join' : 'create', {name, code: $('#code').value});
+  session = await api(mode === 'join' ? 'join' : 'create', {name, code: $('#code').value, ...options});
   sessionStorage.setItem('arte-da-guerra-session', JSON.stringify(session));
   if (mode === 'practice') {
    await api('lobby', {action: 'mode', mode: 'duel'});
@@ -69,10 +74,11 @@ async function enter(mode) {
    if(mapId!==DEFAULT_MAP)await api('lobby',{action:'map',mapId});
    await api('start', {});
   }
-  showGame();
- } catch (error) {toast(error.message);}
+  showGame();return {ok:true};
+ } catch (error) {toast(error.message);return {ok:false,error:error.message};}
 }
-$('#create').onclick=()=>enter('create');$('#join').onclick=()=>enter('join');$('#practice').onclick=()=>enter('practice');
+const roomBrowser=initRoomBrowser({doc:document,fetcher:fetch,schedule:setTimeout,cancel:clearTimeout,onEnter:enter,onReady:ready=>lobbyAction({action:'ready',ready})});
+$('#create').onclick=()=>roomBrowser.openCreate();$('#join').onclick=()=>roomBrowser.openJoin($('#code').value);$('#practice').onclick=()=>enter('practice');
 $('#mode').onchange = () => lobbyAction({action: 'mode', mode: $('#mode').value});
 $('#difficulty').onchange = () => lobbyAction({action: 'difficulty', difficulty: $('#difficulty').value});
 $('#map-choice').onchange = () => lobbyAction({action: 'map', mapId: $('#map-choice').value});
@@ -113,9 +119,9 @@ $('#again').onclick=leaveRoom;
 $('#leave').onclick=()=>{if(state?.phase!=='playing'||confirm('Sair elimina suas unidades desta partida. Continuar?'))leaveRoom();};
 window.onpagehide=()=>{session=null;streamController?.abort();};
 $('#surrender').onclick=()=>{if(state?.phase==='playing'&&confirm('Render-se elimina suas unidades. Deseja continuar?'))send({type:'surrender'});};
-function showGame(){$('#welcome').hidden=true;$('#game').hidden=false;$('#sitefooter').hidden=true;$('#roomcode').textContent=session.code;resize();connect();}
+function showGame(){roomBrowser?.setActive(false);$('#welcome').hidden=true;$('#game').hidden=false;$('#sitefooter').hidden=true;$('#roomcode').textContent=session.code;resize();connect();}
 async function connect(){if(reconnecting)return;reconnecting=true;let first=true;
- while(session){try{streamController=new AbortController();const res=await fetch(`/api/events?room=${session.code}`,{headers:{Authorization:`Bearer ${session.token}`},signal:streamController.signal});if(!res.ok){sessionStorage.removeItem('arte-da-guerra-session');session=null;$('#game').hidden=true;$('#welcome').hidden=false;$('#sitefooter').hidden=false;toast('A sala foi encerrada. Crie uma nova ou entre por um convite.');break;}$('#connection').textContent='● Servidor conectado · 10 atualizações/s';const reader=res.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let idx;while((idx=buffer.indexOf('\n\n'))>=0){const msg=buffer.slice(0,idx);buffer=buffer.slice(idx+2);if(msg.startsWith('data: ')){state=JSON.parse(msg.slice(6));receiveEffects();if(first&&state.entities.length){home();first=false;}updateUI();}}} }catch{}
+ while(session){try{streamController=new AbortController();const res=await fetch(`/api/events?room=${session.code}`,{headers:{Authorization:`Bearer ${session.token}`},signal:streamController.signal});if(!res.ok){sessionStorage.removeItem('arte-da-guerra-session');session=null;$('#game').hidden=true;$('#welcome').hidden=false;$('#sitefooter').hidden=false;roomBrowser?.setActive(true);toast('A sala foi encerrada. Crie uma nova ou entre por um convite.');break;}$('#connection').textContent='● Servidor conectado · 10 atualizações/s';const reader=res.body.getReader(),decoder=new TextDecoder();let buffer='';while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let idx;while((idx=buffer.indexOf('\n\n'))>=0){const msg=buffer.slice(0,idx);buffer=buffer.slice(idx+2);if(msg.startsWith('data: ')){state=JSON.parse(msg.slice(6));receiveEffects();if(first&&state.entities.length){home();first=false;}updateUI();}}} }catch{}
  $('#connection').textContent='◌ Conexão interrompida · reconectando…';await new Promise(r=>setTimeout(r,1500));
  }reconnecting=false;}
 let lobbyQueue=Promise.resolve(),lobbyPending=0;
@@ -174,7 +180,7 @@ function updateUI() {
  $('#phase').textContent = state.phase === 'lobby' ? 'Prepare sua equipe' : state.phase === 'finished' ? 'Batalha encerrada' : p.defeated ? 'Cidadela caída · acompanhando aliados' : `${FACTIONS[p.faction]?.name || 'Arte da Guerra'} · Time ${p.team + 1}`;
  $('#game').classList.toggle('lobby-phase',state.phase==='lobby');
  $('#lobby').hidden = state.phase !== 'lobby'; $('#end').hidden = state.phase !== 'finished';
- if (!lobbyPending) {$('#mode').value = state.mode || 'ffa'; $('#faction').value = p.faction || 'fort'; $('#difficulty').value = state.difficulty || DEFAULT_DIFFICULTY;$('#map-choice').value=state.mapId || DEFAULT_MAP;$('#bot-count').value=String(state.botCount || 0);}
+ if (!lobbyPending) {$('#mode').value = state.mode || 'ffa'; $('#faction').value = p.faction || 'fort'; $('#difficulty').value = state.difficulty || DEFAULT_DIFFICULTY;$('#map-choice').value=state.mapFamilyId || battlefield.familyId || state.mapId || DEFAULT_MAP;$('#bot-count').value=String(state.botCount || 0);}
  $('#mode').disabled = !host || state.phase !== 'lobby' || lobbyPending > 0;
  $('#faction').disabled = state.phase !== 'lobby' || lobbyPending > 0;
  $('#difficulty').disabled = !host || state.phase !== 'lobby' || lobbyPending > 0;
@@ -184,11 +190,11 @@ function updateUI() {
  const humans=state.players.filter(member=>!member.bot).length;
  const bots=state.resolvedBotCount ?? (state.botCount || humans);
  $('#match-summary').textContent=state.mode==='coop'?`${humans} jogador${humans===1?'':'es'} contra ${bots} máquina${bots===1?'':'s'}`:state.mode==='duel'?'1 jogador contra 1 máquina':state.mode==='duos'?'2 contra 2 · vagas livres recebem máquinas':`${state.players.length} comandantes · times definidos abaixo`;
- $('#maphint').textContent=`${battlefield.description} Posições iniciais sorteadas a cada partida; aliados permanecem do mesmo lado nos modos de equipe.`;
+ $('#maphint').textContent=`${battlefield.description} ${battlefield.capacity?battlefield.capacity+' locais possíveis. ':''}Bases sorteadas; aliados próximos. Explore as trilhas para descobrir o rival. Acampamentos são opcionais.`;
  $('#difficultyhint').textContent = DIFFICULTIES[state.difficulty || DEFAULT_DIFFICULTY]?.description || '';
  $('#modehint').textContent = mode?.description || '';
  $('#factionhint').textContent = FACTIONS[p.faction || 'fort']?.description || '';
- const key = JSON.stringify([state.mode, state.botCount, state.resolvedBotCount, host, state.players.map(member => [member.id,member.name,member.team,member.slot,member.bot,member.faction])]);
+ const key = JSON.stringify([state.mode, state.botCount, state.resolvedBotCount, host, state.players.map(member => [member.id,member.name,member.team,member.slot,member.bot,member.faction,member.ready])]);
  if (key !== rosterKey) {
   rosterKey = key;
   const roster = $('#players'); roster.replaceChildren();
@@ -197,7 +203,7 @@ function updateUI() {
    el.className = 'player lobby-row' + (!member ? ' empty' : ''); el.style.setProperty('--p', colors[slot]);
    const name = document.createElement('span');
    const autoBot = state.mode === 'coop' && slot >= 4 && slot < 4+bots || state.mode === 'duel' && slot === 1;
-   name.textContent = member ? `${member.name}${member.id === p.id ? ' · você' : ''} · ${member.bot ? 'Máquina' : 'Jogador'}` : autoBot ? 'Máquina ao iniciar' : state.mode==='coop'&&slot>=4?'Vaga de máquina desativada':'Vaga para amigo';
+   name.textContent = member ? `${member.name}${member.id === p.id ? ' · você' : ''} · ${member.bot ? 'Máquina' : state.roomInfo?.requiresReady ? (member.ready?'Pronto':'Aguardando') : 'Jogador'}` : autoBot ? 'Máquina ao iniciar' : state.mode==='coop'&&slot>=4?'Vaga de máquina desativada':'Vaga para amigo';
    el.append(name);
    if (member) {
     const team = document.createElement('select'); team.setAttribute('aria-label', `Time da vaga ${slot + 1}`);
@@ -217,7 +223,8 @@ function updateUI() {
   }
  }
  const autoStart = ['duel','duos','coop'].includes(state.mode);
- $('#start').disabled = lobbyPending > 0 || !host || (!autoStart && (state.players.length < 2 || new Set(state.players.map(member=>member.team)).size < 2));
+ roomBrowser?.renderReadiness(state,session,lobbyPending>0);
+ $('#start').disabled = lobbyPending > 0 || !host || (state.roomInfo?.requiresReady && !state.roomInfo.allReady) || (!autoStart && (state.players.length < 2 || new Set(state.players.map(member=>member.team)).size < 2));
  $('#lobbyhint').textContent = !host ? 'O anfitrião inicia a partida; você pode escolher sua tribo.' :
   state.mode === 'coop' ? `Convide até três amigos. ${bots} máquina${bots===1?'':'s'} no time adversário; o anfitrião pode ajustar a quantidade.` :
   state.mode === 'duel' ? 'Treino individual: uma máquina será sua adversária.' :
@@ -430,6 +437,7 @@ function layoutActions(preferred) {
  actions.classList.toggle('hero-recruit-grid',actionTab==='recruit'&&children.some(child=>child.classList.contains('hero-card')));
 }
 function refreshActions() {
+ touchControls?.update();
  syncControlGroups();
  const units = state?.entities.filter(e => selected.has(e.id)) || [];
  updateProductionPanel(units);
@@ -756,7 +764,7 @@ function clampCamera() {
   camera[axis]=half>=WORLD/2?WORLD/2:Math.max(half,Math.min(WORLD-half,camera[axis]));
  }
 }
-function resize(){const rect=canvas.getBoundingClientRect();cw=rect.width;ch=rect.height;const d=Math.min(devicePixelRatio||1,2);canvas.width=cw*d;canvas.height=ch*d;ctx.setTransform(d,0,0,d,0,0);clampCamera();}
+function resize(){const rect=canvas.getBoundingClientRect();cw=rect.width;ch=rect.height;const d=touchPixelRatio(devicePixelRatio||1,touchControls?.active,touchControls?.light);canvas.width=cw*d;canvas.height=ch*d;ctx.setTransform(d,0,0,d,0,0);clampCamera();}
 new ResizeObserver(resize).observe(canvas);
 const world=p=>({x:camera.x+(p.x-cw/2)/zoom,y:camera.y+(p.y-ch/2)/zoom});
 const local=e=>{const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
@@ -780,19 +788,7 @@ $('#hud-minimap').onpointerdown=event=>{
  if(event.button===2){const trainers=state.entities.filter(e=>selected.has(e.id)&&e.owner===session?.id&&['base','barracks','hall','workshop'].includes(e.type));if(trainers.length===selected.size&&trainers.length){for(const trainer of trainers)send(rallyOrder(trainer.id,point));}else send({type:'move',...point});}else if(event.button===0)camera=point;
 };
 canvas.oncontextmenu=e=>e.preventDefault();
-canvas.onpointerdown = async event => {
- canvas.focus(); audio.unlock();
- const p = local(event); pointer = p;
- if (minimap && p.x >= minimap.x && p.x <= minimap.x + minimap.s && p.y >= minimap.y && p.y <= minimap.y + minimap.s) {
-  camera = {x: (p.x - minimap.x) / minimap.s * WORLD, y: (p.y - minimap.y) / minimap.s * WORLD};
-  return;
- }
- if (event.button === 1) {
-  drag = {pan: true, from: p, camera: {...camera}};
-  canvas.setPointerCapture(event.pointerId); event.preventDefault(); return;
- }
- if (event.button === 2) {
-  if (building || spellTarget || attackTarget || rallyTarget || workTarget) {setBuild(null); cancelTargeting(); return;}
+function contextOrderAt(p) {
   const w = world(p), target = entityAt(w);
   const drop=dropAt(w);if(drop){pickupLoot(drop);return;}
   const trainers = state?.entities.filter(e=>selected.has(e.id)&&e.owner===session?.id&&['base','barracks','hall','workshop'].includes(e.type)) || [];
@@ -803,8 +799,8 @@ canvas.onpointerdown = async event => {
   else if (resource && selectedWorkers().length) send({type: 'gather',ids:selectedWorkers().map(worker=>worker.id), target: resource.id});
   else send({type: 'move', ...w});
   marker = {...w, time: performance.now()}; return;
- }
- if (event.button !== 0) return;
+}
+async function activateMapPoint(p) {
  if (spellTarget || attackTarget || rallyTarget || workTarget) {
   const point = world(p), error = targetError(point);
   if (error) {toast(error); return;}
@@ -823,15 +819,57 @@ canvas.onpointerdown = async event => {
   }
   return;
  }
- drag = {from: p, to: p, shift: event.shiftKey}; canvas.setPointerCapture(event.pointerId);
+}
+function selectMapArea(from,to,shift=false) {
+ if(!shift)selected.clear();
+ if(Math.hypot(from.x-to.x,from.y-to.y)<6){const t=entityAt(world(to));if(t)selected.add(t.id);}
+ else {const a=world(from),b=world(to);for(const t of state?.entities||[])if(t.owner===session?.id&&!BUILDING_TYPES.includes(t.type)&&t.x>=Math.min(a.x,b.x)&&t.x<=Math.max(a.x,b.x)&&t.y>=Math.min(a.y,b.y)&&t.y<=Math.max(a.y,b.y))selected.add(t.id);}
+ drag=null;refreshActions();
+}
+function hasMapTarget(){return !!(building||spellTarget||attackTarget||rallyTarget||workTarget);}
+async function touchMapTap(p,adding=false) {
+ if(minimap&&p.x>=minimap.x&&p.x<=minimap.x+minimap.s&&p.y>=minimap.y&&p.y<=minimap.y+minimap.s){camera={x:(p.x-minimap.x)/minimap.s*WORLD,y:(p.y-minimap.y)/minimap.s*WORLD};return;}
+ if(hasMapTarget()){await activateMapPoint(p);return;}
+ selectMapArea(p,p,adding);
+}
+function cycleTouchHero(){
+ const inGroup=selectedHeroes();
+ if(inGroup.length>1){const index=inGroup.findIndex(e=>e.id===activeSelectedHero()?.id);activateHero(inGroup[(index+1)%inGroup.length].id);return;}
+ const heroes=(state?.entities||[]).filter(e=>e.owner===session?.id&&HEROES[e.type]&&e.hp>0).sort((a,b)=>a.id-b.id);
+ const index=heroes.findIndex(e=>selected.has(e.id)),hero=heroes[(index+1)%heroes.length];
+ if(hero){setBuild(null);cancelTargeting();selected=new Set([hero.id]);camera={x:hero.x,y:hero.y};refreshActions();}
+}
+canvas.onpointerdown = async event => {
+ if(touchControls?.down(event))return;
+ canvas.focus(); audio.unlock();
+ const p=local(event);pointer=p;
+ if(minimap&&p.x>=minimap.x&&p.x<=minimap.x+minimap.s&&p.y>=minimap.y&&p.y<=minimap.y+minimap.s){camera={x:(p.x-minimap.x)/minimap.s*WORLD,y:(p.y-minimap.y)/minimap.s*WORLD};return;}
+ if(event.button===1){drag={pan:true,from:p,camera:{...camera}};canvas.setPointerCapture(event.pointerId);event.preventDefault();return;}
+ if(event.button===2){if(hasMapTarget()){setBuild(null);cancelTargeting();return;}contextOrderAt(p);return;}
+ if(event.button!==0)return;
+ if(hasMapTarget()){await activateMapPoint(p);return;}
+ drag={from:p,to:p,shift:event.shiftKey};canvas.setPointerCapture(event.pointerId);
 };
-canvas.onpointermove=e=>{pointer=local(e);if(drag?.pan){camera.x=drag.camera.x-(pointer.x-drag.from.x)/zoom;camera.y=drag.camera.y-(pointer.y-drag.from.y)/zoom;}else if(drag)drag.to=pointer;};
-canvas.onpointerleave=()=>{pointer=null;};canvas.onpointercancel=()=>{drag=null;};
-canvas.onpointerup=e=>{if(!drag)return;if(drag.pan){drag=null;return;}const {from,to,shift}=drag;if(!shift)selected.clear();if(Math.hypot(from.x-to.x,from.y-to.y)<6){const t=entityAt(world(to));if(t)selected.add(t.id);}else{const a=world(from),b=world(to);for(const t of state?.entities||[])if(t.owner===session?.id&&!BUILDING_TYPES.includes(t.type)&&t.x>=Math.min(a.x,b.x)&&t.x<=Math.max(a.x,b.x)&&t.y>=Math.min(a.y,b.y)&&t.y<=Math.max(a.y,b.y))selected.add(t.id);}drag=null;refreshActions();};
+canvas.onpointermove=e=>{if(touchControls?.move(e))return;pointer=local(e);if(drag?.pan){camera.x=drag.camera.x-(pointer.x-drag.from.x)/zoom;camera.y=drag.camera.y-(pointer.y-drag.from.y)/zoom;}else if(drag)drag.to=pointer;};
+canvas.onpointerleave=()=>{pointer=null;};
+canvas.onpointercancel=e=>{touchControls?.cancel(e);drag=null;pointer=null;};
+canvas.onlostpointercapture=e=>{if(e.pointerType==='touch')touchControls?.cancel(e);};
+canvas.onpointerup=e=>{if(touchControls?.up(e)){pointer=null;return;}if(!drag)return;if(drag.pan){drag=null;return;}selectMapArea(drag.from,drag.to,drag.shift);};
 canvas.ondblclick=e=>{const unit=entityAt(world(local(e)));if(unit?.owner!==session?.id)return;selected=new Set(state.entities.filter(t=>t.type===unit.type&&t.owner===unit.owner&&Math.abs(t.x-camera.x)<cw/2/zoom&&Math.abs(t.y-camera.y)<ch/2/zoom).map(t=>t.id));refreshActions();};
 canvas.onwheel=e=>{e.preventDefault();zoom=Math.max(.35,Math.min(1.25,zoom*(e.deltaY>0?.9:1.1)));};
+touchControls=initTouchControls({canvas,doc:document,
+ getView:()=>({...camera,zoom,width:cw,height:ch}),setView:view=>{camera={x:view.x,y:view.y};zoom=view.zoom;clampCamera();},
+ getStatus:()=>({playing:state?.phase==='playing'&&!mine()?.defeated,targeting:hasMapTarget()}),
+ tap:touchMapTap,area:selectMapArea,selection:value=>{drag=value;},preview:value=>{pointer=value;},
+ onCommand:contextOrderAt,onAttack:armAttackMove,onCancel:()=>{setBuild(null);cancelTargeting();},onHome:home,onHero:cycleTouchHero,
+ onSaveGroup:saveControlGroup,onRecallGroup:recallControlGroup,
+ onLight:value=>{reducedMotion=systemReducedMotion||value;spellEffects.setReducedMotion?.(reducedMotion);combatEffects.setReducedMotion?.(reducedMotion);resize();},
+ onActivate:()=>{audio.unlock();resize();}
+});
+if(touchControls?.active)resize();
+function anyDialogOpen(){return $('#instructions').open||$('#hero-guide').open||$('#selection-info').open||!!document.querySelectorAll?.('dialog[open]').length;}
 window.onkeydown = event => {
- if (['INPUT','TEXTAREA','SELECT'].includes(event.target?.tagName) || event.target?.isContentEditable || $('#instructions').open || $('#hero-guide').open || $('#selection-info').open) {keys.clear();return;}
+ if (['INPUT','TEXTAREA','SELECT'].includes(event.target?.tagName) || event.target?.isContentEditable || anyDialogOpen()) {keys.clear();return;}
  const key = event.key.toLowerCase();
  if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','F1'].includes(event.key)) event.preventDefault();
  if (event.key === 'Escape') {setBuild(null);cancelTargeting();return;}
@@ -1079,6 +1117,7 @@ function drawMapWater(map,mini=false) {
 }
 function drawTerrain(map) {
  ctx.save();ctx.lineWidth=1;
+ mapArt.drawGround(ctx,map);
  drawMapWater(map);
  ctx.lineWidth=1;
  for(const o of map.obstacles){
@@ -1108,6 +1147,7 @@ function campStatus(camp) {
  return timers.length?`${alive} · Retorno ${timers.join(' / ')}`:alive;
 }
 function drawCamp(camp) {
+ mapArt.drawCamp(ctx,camp);
  const type=CAMP_TYPES[camp.tier]||CAMP_TYPES.medium,boss=camp.boss||camp.tier==='boss',radius=boss?87:62;
  ctx.save();ellipse(camp.x,camp.y,radius,radius*.62,type.color+'25');
  ctx.strokeStyle=type.color+'99';ctx.lineWidth=boss?2:1;ctx.setLineDash(boss?[]:[5,6]);ctx.beginPath();ctx.ellipse(camp.x,camp.y,radius,radius*.62,0,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
@@ -1167,21 +1207,22 @@ function drawBossWarnings() {
 function drawMinimap() {
  const previousContext=ctx,surface=$('#hud-minimap'),hudContext=surface.getContext?.('2d'),rect=surface.getBoundingClientRect();
  let s=Math.min(150,cw*.2),x=cw-s-18,y=ch-s-18;
- if(hudContext&&rect.width>0&&rect.height>0){const d=Math.min(devicePixelRatio||1,2);if(surface.width!==Math.round(rect.width*d)||surface.height!==Math.round(rect.height*d)){surface.width=Math.round(rect.width*d);surface.height=Math.round(rect.height*d);}ctx=hudContext;ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,rect.width,rect.height);s=Math.min(rect.width,rect.height)-12;x=(rect.width-s)/2;y=(rect.height-s)/2;hudMinimap={x,y,s};minimap=null;}else minimap={s,x,y};
+ if(hudContext&&rect.width>0&&rect.height>0){const d=touchPixelRatio(devicePixelRatio||1,touchControls?.active,touchControls?.light);if(surface.width!==Math.round(rect.width*d)||surface.height!==Math.round(rect.height*d)){surface.width=Math.round(rect.width*d);surface.height=Math.round(rect.height*d);}ctx=hudContext;ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,rect.width,rect.height);s=Math.min(rect.width,rect.height)-12;x=(rect.width-s)/2;y=(rect.height-s)/2;hudMinimap={x,y,s};minimap=null;}else minimap={s,x,y};
  const map=getMap(state.mapId||DEFAULT_MAP);
  try {
  ctx.fillStyle='#101e18ee';ctx.fillRect(x-5,y-5,s+10,s+10);ctx.strokeStyle='#798660';ctx.strokeRect(x-5,y-5,s+10,s+10);
  ctx.fillStyle=map.theme.ground;ctx.fillRect(x,y,s,s);
- if(state.mapId){ctx.save();ctx.translate(x,y);ctx.scale(s/WORLD,s/WORLD);drawMapWater(map,true);ctx.restore();}
+ if(state.mapId){ctx.save();ctx.translate(x,y);ctx.scale(s/WORLD,s/WORLD);mapArt.drawGround(ctx,map,{mini:true});drawMapWater(map,true);ctx.restore();}
  drawFog({x,y,s});
- // Hollow markers are the public starting setup, never live enemy intelligence.
+ // Public possible sites reveal geometry only; assigned markers contain allies only.
+ for(const site of map.spawnSites||[]){const sx=x+site.x/WORLD*s,sy=y+site.y/WORLD*s;ctx.strokeStyle='#b3b39e88';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(sx,sy-3);ctx.lineTo(sx+3,sy);ctx.lineTo(sx,sy+3);ctx.lineTo(sx-3,sy);ctx.closePath();ctx.stroke();}
  for(const start of state.startingPositions||[]){ctx.strokeStyle=colors[start.slot]||'#ccc';ctx.lineWidth=1;ctx.strokeRect(x+start.x/WORLD*s-4,y+start.y/WORLD*s-4,8,8);}
  if(state.mapId)for(const camp of map.camps){if(camp.tier!=='boss')continue;ctx.font='bold 13px Segoe UI';ctx.textAlign='center';ctx.fillStyle=CAMP_TYPES.boss.color;ctx.fillText('✦',x+camp.x/WORLD*s,y+camp.y/WORLD*s+4);}
  for(const e of state.entities){ctx.fillStyle=colors[state.players.find(p=>p.id===e.owner)?.slot]||CAMP_TYPES[e.neutralTier]?.color||'#d4a478';const sz=e.type==='base'?6:e.boss?5:3;ctx.fillRect(x+e.x/WORLD*s-sz/2,y+e.y/WORLD*s-sz/2,sz,sz);}
  ctx.strokeStyle='#e8e6b8';ctx.lineWidth=1;ctx.strokeRect(x+(camera.x-cw/2/zoom)/WORLD*s,y+(camera.y-ch/2/zoom)/WORLD*s,cw/zoom/WORLD*s,ch/zoom/WORLD*s);
  }finally{ctx=previousContext;}
 }
-function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;const speed=480*dt/zoom,modalOpen=$('#instructions').open||$('#hero-guide').open||$('#selection-info').open;if(modalOpen){keys.clear();pointer=null;drag=null;}if(!drag&&!modalOpen){if(keys.has('arrowleft')||pointer?.x<12)camera.x-=speed;if(keys.has('arrowright')||pointer?.x>cw-12)camera.x+=speed;if(keys.has('arrowup')||pointer?.y<12)camera.y-=speed;if(keys.has('arrowdown')||pointer?.y>ch-12)camera.y+=speed;}clampCamera();
+function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;const speed=480*dt/zoom,modalOpen=anyDialogOpen();if(modalOpen){keys.clear();pointer=null;drag=null;}if(!drag&&!modalOpen){if(keys.has('arrowleft')||(!touchControls?.active&&pointer?.x<12))camera.x-=speed;if(keys.has('arrowright')||(!touchControls?.active&&pointer?.x>cw-12))camera.x+=speed;if(keys.has('arrowup')||(!touchControls?.active&&pointer?.y<12))camera.y-=speed;if(keys.has('arrowdown')||(!touchControls?.active&&pointer?.y>ch-12))camera.y+=speed;}clampCamera();
  ctx.clearRect(0,0,cw,ch);ctx.fillStyle='#12291f';ctx.fillRect(0,0,cw,ch);ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(zoom,zoom);ctx.translate(-camera.x,-camera.y);ctx.fillStyle=getMap(state?.mapId||DEFAULT_MAP).theme.ground;ctx.fillRect(0,0,1800,1800);
  // Cached painted ground keeps fine texture out of the per-frame draw loop.
  environmentArt?.drawGround(ctx,getMap(state?.mapId||DEFAULT_MAP));
@@ -1216,3 +1257,5 @@ function render(now){const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;c
  if(state.phase==='playing'){ctx.textAlign='left';ctx.font='10px Segoe UI';state.players.forEach((p,i)=>{ctx.fillStyle=colors[p.slot];ctx.fillText(`${p.defeated?'×':'●'} ${p.name} · Time ${p.team+1}`,18,ch-18-(state.players.length-i-1)*18);});}}
  requestAnimationFrame(render);}
 requestAnimationFrame(render);if(saved&&(!invite||invite===saved.code)){session=saved;showGame();}
+
+roomBrowser?.setActive(!session);

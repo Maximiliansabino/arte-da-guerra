@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {room,addPlayer,configureLobby,start,spawn,command,snapshot,step} from '../game.js';
-import {botTurn} from '../ai.js';
+import {botTurn,botDiagnostics} from '../ai.js';
+import {getMap,terrainBlocked,segmentClear} from '../public/terrain.js';
 import {DIFFICULTIES} from '../public/ai-config.js';
 import {tickPowers} from '../powers.js';
 
@@ -166,14 +167,19 @@ test('normal reúne dezesseis combatentes na ofensiva tardia em vez de repetir g
 });
 
 test('ofensiva usa travessia lateral pública e avança ao próximo ponto sem ir ao Colosso',()=>{
-  const {r,bot,stage}=duel();r.mapId='three-bridges';r.time=160;
+  const {r,human,bot,stage}=duel();r.mapId='three-bridges';r.time=160;
+  const target=r.entities.find(e=>e.owner===human.id&&e.type==='base');
+  r.visionAreas=[{owner:bot.id,x:target.x,y:target.y,radius:80,until:1000}];
   const army=r.entities.filter(e=>e.owner===bot.id&&e.type==='soldier');
   while(army.length<8)army.push(spawn(r,bot,'soldier',stage.x,stage.y));
   army.forEach(e=>{e.x=stage.x;e.y=stage.y;e.order=null;});
   botTurn(r,bot,{command});
-  assert.ok(army.every(e=>e.order.type==='attackMove'&&Math.abs(e.order.x-1150)<=20&&Math.abs(e.order.y-1500)<=20));
-  army.forEach(e=>{e.x=1150;e.y=1500;});r.time+=2;botTurn(r,bot,{command});
-  assert.ok(army.every(e=>Math.abs(e.order.x-650)<=20&&Math.abs(e.order.y-1500)<=20));
+  const route=botDiagnostics(r,bot).route;assert.ok(route.length>1);
+  const blocked=(x,y)=>terrainBlocked(x,y,10,r.mapId)||getMap(r.mapId).camps.some(c=>Math.hypot(x-c.x,y-c.y)<(c.tier==='boss'?340:260));
+  let previous=stage;for(const point of route){assert.ok(segmentClear(previous,point,blocked));previous=point;}
+  assert.ok(army.every(e=>e.order.type==='attackMove'));
+  army.forEach(e=>{e.x=route[0].x;e.y=route[0].y;});r.time+=2;botTurn(r,bot,{command});
+  assert.ok(army.every(e=>Math.hypot(e.order.x-route[1].x,e.order.y-route[1].y)<24));
 });
 
 test('exército ferido no limite de planejamento pode recrutar apoio para não ficar parado para sempre',()=>{
@@ -201,6 +207,8 @@ test('após derrotar uma base a tropa avança ao próximo adversário sem voltar
   const r=room(),bot=addPlayer(r,'Máquina'),first=addPlayer(r,'Primeiro'),second=addPlayer(r,'Segundo');
   start(r,bot);bot.bot=true;bot.gold=0;bot.wood=0;r.mapId='three-bridges';r.time=160;
   r.startingPositions=[{slot:0,x:220,y:300},{slot:1,x:1580,y:300},{slot:2,x:1580,y:1500}];
+  for(const player of [first,second]){const target=r.entities.find(e=>e.owner===player.id&&e.type==='base'),point=r.startingPositions.find(s=>s.slot===player.slot);target.x=point.x;target.y=point.y;}
+  r.visionAreas=r.startingPositions.slice(1).map(point=>({owner:bot.id,x:point.x,y:point.y,radius:80,until:1000}));
   const base=r.entities.find(e=>e.owner===bot.id&&e.type==='base');base.x=220;base.y=300;
   const army=r.entities.filter(e=>e.owner===bot.id&&e.type==='soldier');
   while(army.length<8)army.push(spawn(r,bot,'soldier',405,300));

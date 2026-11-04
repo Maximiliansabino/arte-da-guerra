@@ -1,6 +1,26 @@
-# Arte da Guerra · 1.0.0
+# Arte da Guerra · 1.0.1
 
 RTS original em português para navegador. Construa, reúna grupos, escolha entre quatro tribos e combine tropas, heróis e cerco. O servidor valida ordens, custos, combate, visão e recompensas.
+
+## Novidades 1.0.1
+
+Os três campos mantêm seus temas e recebem trilhas conectadas, caminhos de flanco e acampamentos opcionais. O tamanho útil e as posições possíveis se ajustam ao total de participantes, incluindo máquinas:
+
+| Participantes na partida | Locais possíveis para bases |
+| --- | --- |
+| 2 (1 × 1) | 4 |
+| 3–4 (inclui 2 × 2) | 8 |
+| 5–8 (inclui 4 amigos × 4 máquinas) | 12 |
+
+São locais candidatos, não novas vagas de jogadores. Bases ocupadas são sorteadas com aliados próximos; locais vazios não concedem recursos iniciais extras. Cada base tem mais de uma saída e há rotas entre adversários que evitam os mercenários. Os marcadores neutros do minimapa mostram locais possíveis. Bases inimigas precisam ser descobertas; a máquina também envia reconhecimento e usa o que sua equipe enxergou. As regras de dano, custos, progressão, XP e habilidades da 1.0.0 foram preservadas.
+
+A capa apresenta salas deste servidor. Crie uma sala pública sem senha, pública com senha (cadeado na lista) ou por convite (oculta na lista). Os jogadores confirmam “Estou pronto” antes do anfitrião iniciar. Mudanças de configuração e entrada de jogadores pedem nova confirmação. Salas lotadas ou em partida podem ser vistas desmarcando “Apenas salas com vagas”; não aceitam entrada. Um anfitrião ausente no lobby pode ser substituído depois de 90 segundos de tolerância para reconexão.
+
+### Jogar no celular
+
+Abra o mesmo endereço no navegador, de preferência com o aparelho deitado. Os controles de toque oferecem seleção, movimento e ordens por destino; dois dedos movem a câmera e a pinça ajusta o zoom. O modo de seleção por área reúne tropas. Grupos, troca do herói ativo e suas habilidades continuam disponíveis. Use o botão de informação ou mantenha uma ação pressionada para ler a descrição sem executá-la. A opção visual leve reduz o custo gráfico, sem alterar a simulação ou o equilíbrio.
+
+O computador conserva seus atalhos e clique direito. Os testes automatizados cobrem gestos e ordens; a compatibilidade de desempenho ainda precisa ser conferida nos aparelhos Android/iPhone que vocês utilizam. Um navegador móvel em segundo plano pode suspender a conexão: retorne à aba para reconectar.
 
 ## Identidade visual 1.0.0
 
@@ -82,8 +102,8 @@ Os amigos abrem `http://192.168.1.10:3000`. A configuração de rede/firewall de
 
 ## Atualização em paralelo
 
-Base consultada: `main` do repositório `Maximiliansabino/arte-da-guerra`, commit `2cb64a5ea35fbab75cf7bfc338e03dab347cdb63`, versão 0.9.0 importada pelo colaborador e preservada nesta entrega. O ZIP inclui o jogo completo e `arte-da-guerra-1.0.0.patch`, relativo a essa base. Veja `APLICAR-1.0.0.txt` e `VALIDACAO-1.0.0.md`. Antes de incorporar o pacote, preserve alterações locais, consulte novamente o GitHub com `git fetch origin`, atualize sua base e faça a integração em uma branch. Execute `git apply --check` antes de aplicar o patch. Não sobreponha uma versão mais nova copiando a pasta inteira.
+Base consultada: `main` de `Maximiliansabino/arte-da-guerra`, commit `b5791292ac2bfbda33875b279bcd835323f02915` (1.0.0, incluindo a integração do colaborador). O ZIP contém o jogo completo e `arte-da-guerra-1.0.1.patch`, relativo a essa base. Leia `APLICAR-1.0.1.txt` e `VALIDACAO-1.0.1.md`. Antes de incorporar o pacote, preserve alterações locais, execute `git fetch origin` e faça a integração em uma branch. Use `git apply --check` antes de aplicar o patch. Não sobreponha uma versão mais nova copiando a pasta inteira.
 
 ## Verificações
 
-Execute `npm test`. Os testes cobrem regras, todos os kits de habilidades, produção, economia, navegação, IA, rede, privacidade da visão, comandos e renderização. Resultados e limites da validação desta entrega estão em `VALIDACAO-1.0.0.md`. A meta de partidas próximas de dez minutos exige acompanhamento separado no 1 × 1 e no 2 × 2; testes de máquina não comprovam equivalência entre jogadores humanos.
+Execute `npm test`. Os testes cobrem regras, todos os kits de habilidades, produção, economia, navegação, IA, rede, privacidade da visão, comandos e renderização. Resultados e limites da validação desta entrega estão em `VALIDACAO-1.0.1.md`. A meta de partidas próximas de dez minutos exige acompanhamento separado no 1 × 1 e no 2 × 2; testes de máquina não comprovam equivalência entre jogadores humanos.

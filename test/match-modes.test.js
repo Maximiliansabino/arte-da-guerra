@@ -5,7 +5,7 @@ import {
   updateVictory, snapshotFor, canSee
 } from '../match.js';
 import {STATS} from '../public/rules.js';
-import {terrainBlocked, route} from '../public/terrain.js';
+import {terrainBlocked, route, getMap, segmentClear} from '../public/terrain.js';
 
 function spawn(r, p, type, x, y) {
   const e = {id: r.nextId++, owner: p.id, type, faction: p.faction, x, y, hp: STATS[type].hp,
@@ -33,22 +33,28 @@ test('cooperativo comporta quatro amigos e quatro máquinas, com bases e recurso
   assert.equal(r.players.filter(p => p.team === 1 && p.bot).length, 4);
   assert.equal(new Set(r.players.map(p => p.slot)).size, 8);
   assert.equal(r.entities.filter(e => e.type === 'base').length, 8);
-  const firstTeamSide = r.entities.find(e => e.owner === p.id && e.type === 'base').x < 900;
+  const capacity=getMap(r.mapId).capacity;
+  for(const team of [0,1]){
+    const sites=r.players.filter(member=>member.team===team).map(member=>r.startingPositions.find(point=>point.slot===member.slot).site);
+    assert.ok(sites.some(first=>sites.every(site=>(site-first+capacity)%capacity<sites.length)),'aliados ocupam um setor contínuo');
+  }
   for (const member of r.players) {
     assert.equal(member.gold, 300); assert.equal(member.wood, 200);
     const base = r.entities.find(e => e.owner === member.id && e.type === 'base');
-    assert.equal(base.x < 900, member.team === 0 ? firstTeamSide : !firstTeamSide);
     const worker = r.entities.find(e => e.owner === member.id && e.type === 'worker');
-    assert.equal(terrainBlocked(base.x, base.y), false);
-    assert.equal(terrainBlocked(worker.x, worker.y), false);
+    assert.equal(terrainBlocked(base.x, base.y,50,r.mapId), false);
+    assert.equal(terrainBlocked(worker.x, worker.y,10,r.mapId), false);
     for (const type of ['gold', 'wood']) {
       const source = r.resources.filter(x => x.type === type).sort((a, b) => Math.hypot(a.x - worker.x, a.y - worker.y) - Math.hypot(b.x - worker.x, b.y - worker.y))[0];
-      assert.ok(Math.hypot(source.x - worker.x, source.y - worker.y) <= 28 || route(worker, source).length > 0);
+      const blocked=(x,y)=>terrainBlocked(x,y,10,r.mapId),path=route(worker,source,blocked);
+      // A source in the same navigation cell needs a clear direct segment,
+      // not a nonempty BFS detour. Check the whole segment in that case.
+      assert.ok(segmentClear(worker,source,blocked)||(path.length>0&&Math.hypot(path.at(-1).x-source.x,path.at(-1).y-source.y)<30));
     }
   }
   for (const source of r.resources) {
     assert.ok(source.x >= 20 && source.y >= 20 && source.x <= 1780 && source.y <= 1780);
-    assert.equal(terrainBlocked(source.x, source.y, 20), false);
+    assert.equal(terrainBlocked(source.x, source.y, 20,r.mapId), false);
   }
   assert.equal(r.camps.length, 0, 'o início da simulação inicializa os acampamentos após criar as bases');
 });

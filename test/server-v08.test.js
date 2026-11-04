@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {server} from '../server.js';
 import {placementError, COST} from '../public/rules.js';
 import {planBuildingPlacement} from '../navigation.js';
+import {getMap} from '../public/terrain.js';
 
 test('rede v0.8: versão real no site e um pedido recruta em dois quartéis com cobrança única pelo lote', {timeout:90000}, async () => {
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -16,10 +17,10 @@ test('rede v0.8: versão real no site e um pedido recruta em dois quartéis com 
     });
     return {status:response.status,body:await response.json()};
   };
-  const waitFor=async(predicate,message)=>{
-    const deadline=Date.now()+45000;
+  const waitFor=async(predicate,message,timeout=45000)=>{
+    const deadline=Date.now()+timeout;
     while(!predicate()){
-      assert.ok(Date.now()<deadline,message);
+      assert.ok(Date.now()<deadline,`${message}: ${JSON.stringify({mapId:state?.mapId,entities:state?.entities.filter(e=>['worker','barracks'].includes(e.type)).map(e=>({id:e.id,type:e.type,hp:e.hp,x:e.x,y:e.y,activity:e.activity,construct:e.construct,queue:e.queue}))})}`);
       await new Promise(resolve=>setTimeout(resolve,25));
     }
   };
@@ -40,7 +41,13 @@ test('rede v0.8: versão real no site e um pedido recruta em dois quartéis com 
     assert.equal((await fetch(base+'/package.json')).status,404,'manifesto interno não precisa ser exposto');
 
     const host=(await post('create',{name:'Treinador'})).body;
-    const guest=await post('join',{name:'Adversário',code:host.code});assert.equal(guest.status,200);
+    // This tests batch recruitment, not hostile camp placement. Four human
+    // sessions select a medium battlefield with space for two safe barracks;
+    // no bot can interfere while their queues and exact payment are measured.
+    for(const name of ['Adversário','Observador 1','Observador 2']){
+      const guest=await post('join',{name,code:host.code});assert.equal(guest.status,200);
+    }
+    assert.equal((await post('lobby',{action:'map',mapId:'crystal-ridge'},host)).status,200);
     assert.equal((await post('start',{},host)).status,200);
     const stream=await fetch(`${base}/api/events?room=${host.code}`,{headers:{Authorization:`Bearer ${host.token}`},signal:abort.signal});
     assert.equal(stream.status,200);
@@ -56,26 +63,28 @@ test('rede v0.8: versão real no site e um pedido recruta em dois quartéis com 
         }
       }
     })().catch(error=>{if(!abort.signal.aborted)throw error;}));
-    await waitFor(()=>state,'primeiro estado chega pelo SSE');
+    await waitFor(()=>state,'primeiro estado chega pelo SSE',5000);
     assert.ok(state.players.every(player=>!('token' in player)));
+    assert.equal(state.mapFamilyId,'crystal-ridge');
+    const map=getMap(state.mapId);assert.equal(map.capacity,8);
     const homeBase=state.entities.find(e=>e.owner===host.id&&e.type==='base');
     const workers=state.entities.filter(e=>e.owner===host.id&&e.type==='worker');
     const ownedBarracks=()=>state.entities.filter(e=>e.owner===host.id&&e.type==='barracks');
-    // Choose legal sites from the same shared placement rules as the UI. This
-    // keeps the integration scenario independent of the shuffled starting side.
+    // Legal construction can still be attacked by mercenaries. Keep both the
+    // building and its production exit away from camps on either map variant.
     for(let count=1;count<=2;count++){
       let chosen;
-      for(const dx of [-180,-120,-60,0,60,120,180])for(const dy of [-180,-120,-60,0,60,120,180]){
+      for(const radius of [100,120,150,180,210,240])for(let n=0;n<72;n++){
         if(chosen)continue;
-        const point={x:homeBase.x+dx,y:homeBase.y+dy};
+        const point={x:homeBase.x+Math.cos(n*Math.PI/36)*radius,y:homeBase.y+Math.sin(n*Math.PI/36)*radius};
         const builder=state.entities.filter(e=>e.owner===host.id&&e.type==='worker')
           .sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y))[0];
-        if(!placementError(state,host.id,builder,point)&&planBuildingPlacement(state,point))chosen={builder,point};
+        if(map.camps.every(c=>Math.hypot(point.x-c.x,point.y-c.y)>=330)&&!placementError(state,host.id,builder,point)&&planBuildingPlacement(state,point))chosen={builder,point};
       }
       assert.ok(chosen,'existe local acessível para os dois quartéis');
       const built=await post('command',{type:'build',ids:[chosen.builder.id],building:'barracks',...chosen.point},host);
       assert.equal(built.status,200,JSON.stringify(built.body));
-      await waitFor(()=>ownedBarracks().length===count,'obra aparece no SSE');
+      await waitFor(()=>ownedBarracks().length===count,`obra ${count} aparece no SSE`,12000);
     }
     for(const [index,worker] of workers.entries()){
       const resource=state.resources.filter(r=>r.type===(index%2?'gold':'wood'))

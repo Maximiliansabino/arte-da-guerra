@@ -4,7 +4,7 @@ import {botTurn} from './ai.js';
 import {initializeCamps,updateCamps} from './camps.js';
 import {registerHeroChoice} from './public/hero-roster.js';
 import {planRecruitment} from './public/recruitment.js';
-import {createRoom,addCommander,configureMatch,beginMatch,snapshotFor,canSee,updateVictory,recordExploration} from './match.js';
+import {createRoom,addCommander,configureMatch,beginMatch,snapshotFor,canSee,canKnowResource,updateVictory,recordExploration} from './match.js';
 import {FACTIONS} from './public/legends.js';
 import {BOSS_RESET} from './public/camp-config.js';
 import {initializeHero,damageEntity,healEntity,castAbility,castExclusive,buyItem,useItem,startResearch,startTroopUpgrade,tickPowers,rewardDefeated,emitSpell,powerCanAct,cancelPreparation,beforeBasicAttack} from './powers.js';
@@ -49,7 +49,7 @@ function nextGatherResource(r, worker, dt) {
       reason:resourceType==='wood'?'Sem madeira acessível por perto. Escolha outra árvore.':'Sem ouro acessível por perto. Escolha outra jazida.'};
   };
   if (previous?.nextSearchAt > r.time) {waiting(); return null;}
-  const candidates = r.resources.filter(resource => resource.type === resourceType && resource.amount > 0 &&
+  const candidates = r.resources.filter(resource => resource.type === resourceType && resource.amount > 0 && canKnowResource(r,worker.owner,resource) &&
     distance(origin, resource) <= GATHER_SEARCH_RADIUS)
     .sort((a,b) => distance(worker,a)-distance(worker,b));
   const search = findReachableTarget(r, worker, candidates, 28, 650);
@@ -167,7 +167,7 @@ export function command(r, p, a) {
     if(a.type==='rally'){
       if(!['base','barracks','hall','workshop'].includes(e.type))throw Error('Selecione uma construção produtora.');
       const resource=a.target===undefined?null:r.resources.find(resource=>resource.id===a.target&&resource.amount>0);
-      if(a.target!==undefined&&!resource)throw Error('Escolha uma jazida ou árvore com recursos disponíveis.');
+      if(a.target!==undefined&&(!resource||!canKnowResource(r,p.id,resource)))throw Error('Escolha uma jazida ou árvore com recursos disponíveis.');
       if(r.mapId&&terrainBlocked(a.x,a.y,10,r.mapId))throw Error('Ponto de encontro bloqueado.');
       if(r.entities.some(b=>STATS[b.type].building&&b.hp>0&&distance(b,a)<48))throw Error('Marque a bandeira fora das construções.');
       e.rally=resource&&e.type==='base'?{type:'gather',target:resource.id,resourceType:resource.type,x:resource.x,y:resource.y}:{type:'move',x:a.x,y:a.y};
@@ -218,6 +218,10 @@ export function command(r, p, a) {
     return;
   }
 
+  const gatherTarget=a.type==='gather'?r.resources.find(t=>t.id===a.target&&t.amount>0):null;
+  if(a.type==='gather'&&(!gatherTarget||!canKnowResource(r,p.id,gatherTarget)))
+    throw Error('Escolha uma jazida ou árvore com recursos disponíveis.');
+
   for (const e of own) {
     if (STATS[e.type].building) continue;
     if (a.type === 'stop') {cancelPreparation(e,r);cancelLootPreparation(e);e.order = null;e.activity={type:'idle'};}
@@ -227,7 +231,7 @@ export function command(r, p, a) {
       if (t&&canSee(r,p.id,t)) {cancelPreparation(e,r);cancelLootPreparation(e);e.order = {type: 'attack', target: t.id};e.activity={type:'moving',target:t.id};}
     }
     if (a.type === 'gather' && e.type === 'worker') {
-      const t = r.resources.find(t => t.id === a.target && t.amount > 0);
+      const t = gatherTarget;
       if (t) {e.order = gatherOrder(t);e.activity={type:distance(e,t)<=28?'gathering':'moving',target:t.id,resourceType:t.type};}
     }
   }

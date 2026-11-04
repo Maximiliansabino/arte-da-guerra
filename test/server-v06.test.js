@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {server} from '../server.js';
-import {MAPS,terrainBlocked} from '../public/terrain.js';
+import {MAPS,getMap,terrainBlocked} from '../public/terrain.js';
 
-test('rede v0.6: três salas preservam mapas próprios, oito posições e configuração autorizada', {timeout:10000}, async () => {
+test('rede v0.6: três salas preservam mapas próprios, posições aliadas e configuração autorizada', {timeout:10000}, async () => {
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`,controller=new AbortController();
   const post=async(path,data,session)=>{
@@ -11,7 +11,7 @@ test('rede v0.6: três salas preservam mapas próprios, oito posições e config
     return {status:response.status,body:await response.json()};
   };
   const view=async session=>{
-    const response=await fetch(`${base}/api/events?room=${session.code}`,{headers:{Authorization:`Bearer ${session.token}`},signal:controller.signal});
+    const response=await fetch(`${base}/api/events?room=${session.code}`,{headers:{Authorization:`Bearer ${session.token}`},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(3000)])});
     assert.equal(response.status,200);
     const reader=response.body.getReader(),decoder=new TextDecoder();let text='';
     try {
@@ -39,19 +39,21 @@ test('rede v0.6: três salas preservam mapas próprios, oito posições e config
     }
     for(const {mapId,host} of games){
       const state=await view(host);
-      assert.equal(state.mapId,mapId);assert.equal(state.mode,'coop');assert.equal(state.phase,'playing');
+      assert.equal(state.mapFamilyId,mapId);assert.match(state.mapId,new RegExp(`^${mapId}~12~[01]$`));assert.equal(state.mode,'coop');assert.equal(state.phase,'playing');
+      const map=getMap(state.mapId);assert.equal(map.capacity,12);
       assert.equal(state.players.length,8);assert.equal(state.players.filter(p=>p.bot).length,4);
-      assert.equal(state.startingPositions.length,8);assert.equal(new Set(state.startingPositions.map(p=>`${p.x},${p.y}`)).size,8);
-      const own=state.players.find(p=>p.id===host.id),ownSide=state.startingPositions.find(p=>p.slot===own.slot).x;
+      assert.equal(state.startingPositions.length,4);assert.equal(new Set(state.startingPositions.map(p=>`${p.x},${p.y}`)).size,4);
+      const own=state.players.find(p=>p.id===host.id);
       for(const p of state.players){
         const point=state.startingPositions.find(s=>s.slot===p.slot);
-        assert.equal(point.x===ownSide,p.team===own.team);assert.equal(terrainBlocked(point.x,point.y,50,mapId),false);
+        assert.equal(!!point,p.team===own.team,'somente posições aliadas são transmitidas');
+        if(point){assert.equal(terrainBlocked(point.x,point.y,50,state.mapId),false);assert.ok(map.spawnSites.some(site=>site.x===point.x&&site.y===point.y));}
         assert.equal('token' in p,false);
       }
-      assert.equal(state.camps.length,MAPS[mapId].camps.length);
+      assert.equal(state.camps.length,map.camps.length);
       assert.equal(state.camps.filter(c=>c.boss).length,1);
       assert.deepEqual([...new Set(state.camps.map(c=>c.tier))].sort(),['boss','easy','hard','medium']);
-      assert.ok(state.resources.every(resource=>!terrainBlocked(resource.x,resource.y,28,mapId)));
+      assert.ok(state.resources.every(resource=>!terrainBlocked(resource.x,resource.y,28,state.mapId)));
       const baseEntity=state.entities.find(e=>e.owner===host.id&&e.type==='base');
       const point=state.startingPositions.find(p=>p.slot===own.slot);assert.equal(baseEntity.x,point.x);assert.equal(baseEntity.y,point.y);
       assert.equal(own.heroLimit,1);assert.deepEqual(own.heroTypes,[]);

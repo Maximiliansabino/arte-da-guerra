@@ -1,5 +1,5 @@
 import {randomBytes, randomUUID} from 'node:crypto';
-import {MAPS, terrainBlocked} from './public/terrain.js';
+import {MAPS, terrainBlocked, getMap, mapFamilyId, resolveMapId} from './public/terrain.js';
 import {STATS, entityStats} from './public/rules.js';
 import {FACTIONS} from './public/legends.js';
 import {DEFAULT_MODE, MODES, FOG_CELL, FOG_COLS, FOG_ROWS} from './public/match-config.js';
@@ -26,25 +26,31 @@ function shuffled(values, random) {
 export function assignStartingPositions(r, random=Math.random) {
   const players=r.players.slice().sort((a,b)=>a.slot-b.slot);
   if(!r.mapId)return players.map(p=>{const [x,y]=spawnsFor(r)[p.slot];return {slot:p.slot,x,y};});
-  if(r.mode==='duos'||r.mode==='coop'){
-    const anchors=r.mode==='coop'?COOP_SPAWNS:DUO_SPAWNS;
-    const sides=shuffled([220,1580],random),result=[];
-    for(const team of [0,1]){
-      const points=shuffled(anchors.filter(([x])=>x===sides[team]),random);
-      for(const [index,player] of players.filter(p=>p.team===team).entries()){
-        const [x,y]=points[index];result.push({slot:player.slot,x,y});
+  const map=getMap(r.mapId.includes('~')?r.mapId:resolveMapId(r.mapId,players.length));
+  const sites=map.spawnSites,capacity=sites.length;
+  const offset=Math.min(capacity-1,Math.floor(random()*capacity));
+  const pick=index=>sites[(offset+index)%capacity];
+  const result=[];
+  const teamIds=[...new Set(players.map(player=>player.team))];
+  if(players.length===2){
+    const gap=1+Math.min(capacity-2,Math.floor(random()*(capacity-1)));
+    for(const [index,player] of shuffled(players,random).entries()){const site=pick(index?gap:0);result.push({slot:player.slot,site:site.id,x:site.x,y:site.y});}
+  }else if(teamIds.length===2&&players.some(player=>players.filter(other=>other.team===player.team).length>1)){
+    // Opposite sectors keep teams contiguous and offer two equally open fronts;
+    // individual bases occupy only part of each sector, not fixed enemy slots.
+    for(const [index,team] of shuffled(teamIds,random).entries()){
+      for(const [i,player] of shuffled(players.filter(player=>player.team===team),random).entries()){
+        const site=pick(index*capacity/2+i);result.push({slot:player.slot,site:site.id,x:site.x,y:site.y});
       }
     }
-    return result.sort((a,b)=>a.slot-b.slot);
+  }else{
+    for(const [i,player] of shuffled(players,random).entries()){
+      const site=pick(Math.floor(i*capacity/players.length));result.push({slot:player.slot,site:site.id,x:site.x,y:site.y});
+    }
   }
-  if(r.mode==='duel'){
-    const [x,y]=shuffled(LEGACY_SPAWNS,random)[0];
-    return players.map((p,i)=>({slot:p.slot,x:i?1800-x:x,y:i?1800-y:y}));
-  }
-  const points=shuffled(LEGACY_SPAWNS,random);
-  return players.map((p,i)=>({slot:p.slot,x:points[i][0],y:points[i][1]}));
+  return result.sort((a,b)=>a.slot-b.slot);
 }
-// Spawn locations are map knowledge, not hidden entity intelligence.
+// Server-side positions; snapshots expose allied assignments only.
 export function startingPoint(r, slot) {
   const assigned=r.startingPositions?.find(position=>position.slot===slot);
   if(assigned)return {x:assigned.x,y:assigned.y};
@@ -53,6 +59,24 @@ export function startingPoint(r, slot) {
 }
 
 function resourcesFor(r) {
+  if(r.mapId?.includes('~')){
+    const resources=[];
+    for(const point of r.startingPositions||[]){
+      const length=Math.hypot(point.x-900,point.y-900),ux=(point.x-900)/length,uy=(point.y-900)/length,tx=-uy,ty=ux;
+      const location=(radial,tangent)=>({x:Math.round(point.x+ux*radial+tx*tangent),y:Math.round(point.y+uy*radial+ty*tangent)});
+      for(let i=0;i<3;i++)resources.push({id:`g${point.slot}-${i}`,type:'gold',...location(170,(i-1)*38),amount:8000,initialAmount:8000});
+      // Timber stays inside the outer road and on the bank away from the river.
+      const woodSide=ux*tx<0?-1:1;
+      for(let i=0;i<8;i++)resources.push({id:`w${point.slot}-${i}`,type:'wood',...location(40,woodSide*(50+i*18)),amount:2500,initialAmount:2500});
+    }
+    // Only occupied sites receive a starting economy. A fixed, small pool of
+    // contested expansion resources prevents vacant sites multiplying wealth.
+    const map=getMap(r.mapId),candidates=[{x:650,y:380},{x:1150,y:1420},{x:380,y:1150},{x:1420,y:650}];
+    for(const [i,point] of candidates.entries())if(!terrainBlocked(point.x,point.y,28,r.mapId)&&!map.spawnSites.some(site=>Math.hypot(site.x-point.x,site.y-point.y)<285)){
+      resources.push({id:`c${i}`,type:i%2?'wood':'gold',...point,amount:5000,initialAmount:5000});
+    }
+    return resources;
+  }
   const resources = [];
   for (const [slot, [x, y]] of spawnsFor(r).entries()) {
     const inward = x < 900 ? 1 : -1;
@@ -193,12 +217,23 @@ export function beginMatch(r, p, practice = false, spawn) {
   if (r.mode !== 'ffa') for (const member of r.players) member.team = prescribedTeam(r, member.slot);
   if (r.players.length < 2 || new Set(r.players.map(member => member.team)).size < 2) throw Error('Escolha pelo menos dois times adversários.');
   r.phase = 'playing';
+  if(r.mapId){r.mapFamilyId=mapFamilyId(r.mapId);r.mapId=resolveMapId(r.mapFamilyId,r.players.length,Math.floor(Math.random()*2));}
   r.startingPositions=assignStartingPositions(r);
+  if(r.mapId)r.resources=resourcesFor(r);
   for (const member of r.players) {
     const {x,y}=startingPoint(r,member.slot);
     spawn(r, member, 'base', x, y);
-    for (let i = 0; i < 4; i++) spawn(r, member, 'worker', x - 55 + i * 28, y + 70);
-    spawn(r, member, 'soldier', x + 55, y + 100);
+    if(r.mapId?.includes('~')){
+      // Face initial troops toward their resources and the outer exits. Fixed
+      // south-facing offsets could place northern workers inside a camp.
+      const radius=Math.hypot(x-900,y-900),ux=(x-900)/radius,uy=(y-900)/radius;
+      const point=(outward,tangent)=>({x:x+ux*outward-uy*tangent,y:y+uy*outward+ux*tangent});
+      for(let i=0;i<4;i++){const p=point(70,-55+i*28);spawn(r,member,'worker',p.x,p.y);}
+      const p=point(100,55);spawn(r,member,'soldier',p.x,p.y);
+    }else{
+      for (let i = 0; i < 4; i++) spawn(r, member, 'worker', x - 55 + i * 28, y + 70);
+      spawn(r, member, 'soldier', x + 55, y + 100);
+    }
   }
   r.touched = Date.now();
 }
@@ -260,6 +295,20 @@ function memoryFor(r, viewer) {
   let memory = teams.get(key);
   if (!memory) {memory = {explored: new Set(), resources: new Map(), camps: new Map()}; teams.set(key, memory);}
   return memory;
+}
+// Starting-resource IDs reveal occupied spawn sites. Commands use the same
+// team knowledge as snapshots, so guessing an ID cannot disclose its position.
+export function canKnowResource(r,viewerId,resource){
+  const viewer=r.players.find(p=>p.id===viewerId);
+  if(!viewer||!resource)return false;
+  if(!r.mapId?.includes('~')||!r.fogEnabled||r.phase==='finished')return true;
+  const ownerSlot=/^[gw](\d+)-/.exec(resource.id)?.[1];
+  if(ownerSlot===undefined||r.players.some(p=>p.slot===Number(ownerSlot)&&alliedMatch(r,viewerId,p.id)))return true;
+  const memory=memoryFor(r,viewer);
+  if(pointVisible(visionSources(r,viewerId),resource)){
+    memory.resources.set(resource.id,resource.amount);return true;
+  }
+  return memory.resources.has(resource.id);
 }
 export function canSeeOrExplored(r,viewerId,target){
   if(!validPoint(target)||target.x<0||target.y<0||target.x>=1800||target.y>=1800)return false;
@@ -326,7 +375,14 @@ export function snapshotFor(r, viewer) {
     const visibleHeroes=entities.filter(e=>e.owner===member.id&&STATS[e.type]?.hero).map(e=>e.type);
     return {id:member.id,name:member.name,slot:member.slot,team:member.team,faction:member.faction,bot:member.bot,defeated:member.defeated,left:member.left,gold: null, wood: null, heroType: visibleHeroes.includes(member.heroType)?member.heroType:null, heroTypes: [...new Set(visibleHeroes)], heroLimit: null, heroProgress: {}, research: {}, researchQueue: null, troopLevel: null};
   });
-  const resources = full ? r.resources : r.resources.map(resource => {
+  const alliedSlots=new Set(r.players.filter(member=>p&&alliedMatch(r,p.id,member.id)).map(member=>member.slot));
+  const resources = full ? r.resources : r.resources.filter(resource=>{
+    if(!r.mapId?.includes('~'))return true;
+    const ownerSlot=/^[gw](\d+)-/.exec(resource.id)?.[1];
+    // Occupied sites alone receive resources, so publishing unseen enemy mines
+    // would disclose the spawn even after startingPositions had been filtered.
+    return ownerSlot===undefined||alliedSlots.has(Number(ownerSlot))||memory.resources.has(resource.id)||pointVisible(sources,resource);
+  }).map(resource => {
     if (pointVisible(sources, resource)) memory.resources.set(resource.id, resource.amount);
     return {...resource, amount: memory.resources.get(resource.id) ?? resource.initialAmount ?? resource.amount};
   });
@@ -343,7 +399,7 @@ export function snapshotFor(r, viewer) {
     code: r.code, mode: r.mode || DEFAULT_MODE, difficulty: r.difficulty || DEFAULT_DIFFICULTY, botCount:r.botCount||0, resolvedBotCount:r.mode==='coop'?cooperativeBotCount(r):r.players.filter(member=>member.bot).length, maxPlayers: modeFor(r).maxPlayers, maxHumans: modeFor(r).maxHumans,
     phase: r.phase, tick: r.tick, time: r.time, winner: r.winner, winningTeam: r.winningTeam ?? null, winners: r.winners || [],
     players, entities: revealPrivate ? entities : entities.map(e => alliedMatch(r, p.id, e.owner) ? alliedEntity(e) : publicEntity(e)),
-    mapId: r.mapId, startingPositions: r.startingPositions || [], camps, resources,
+    mapId: r.mapId, mapFamilyId:r.mapFamilyId||r.mapId, startingPositions:(r.startingPositions||[]).filter(position=>revealPrivate||r.players.some(player=>player.slot===position.slot&&alliedMatch(r,p.id,player.id))).map(position=>({...position})), camps, resources,
     combatEvents: full ? r.combatEvents : visibleEvents(r.combatEvents, sources, visibleIds),
     spellEvents: full ? (r.spellEvents || []).map(event=>({...event,...(Array.isArray(event.targetIds)?{targetIds:event.targetIds.filter(id=>visibleIds.has(id))}:{}),...(Array.isArray(event.heals)?{heals:event.heals.filter(hit=>visibleIds.has(hit.targetId))}:{})})) : visibleEvents(r.spellEvents, sources, visibleIds),
     deathEvents:(r.deathEvents||[]).filter(event=>revealPrivate||event.visibleTo?.includes(p.id)).map(({visibleTo,...event})=>event),

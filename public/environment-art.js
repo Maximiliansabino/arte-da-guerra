@@ -24,15 +24,15 @@ export function groupGoldNodes(resources=[]){
   const key=match[1];if(!candidates.has(key))candidates.set(key,[]);candidates.get(key).push(r);
  }
  for(const nodes of candidates.values()){
-  const sameRow=Math.max(...nodes.map(n=>n.y))-Math.min(...nodes.map(n=>n.y))<2;
-  const nearby=Math.max(...nodes.map(n=>n.x))-Math.min(...nodes.map(n=>n.x))<=100;
-  if(sameRow&&nearby)result.push(nodes);else result.push(...nodes.map(n=>[n]));
+  const spread=Math.max(0,...nodes.flatMap(a=>nodes.map(b=>Math.hypot(a.x-b.x,a.y-b.y))));
+  // Spawn resources may rotate with the base site in 1.0.1.
+  if(spread<=100)result.push(nodes);else result.push(...nodes.map(n=>[n]));
  }
  return result.map(nodes=>({
   id:nodes.map(n=>n.id).join('|'),ids:nodes.map(n=>n.id),
   x:nodes.reduce((s,n)=>s+n.x,0)/nodes.length,y:nodes.reduce((s,n)=>s+n.y,0)/nodes.length,
   amount:nodes.reduce((s,n)=>s+Math.max(0,Number(n.amount)||0),0),
-  width:Math.max(86,Math.min(145,69+Math.max(...nodes.map(n=>n.x))-Math.min(...nodes.map(n=>n.x))))
+  width:Math.max(86,Math.min(145,69+Math.max(0,...nodes.flatMap(a=>nodes.map(b=>Math.hypot(a.x-b.x,a.y-b.y))))))
  }));
 }
 

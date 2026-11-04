@@ -1,4 +1,12 @@
 import test from 'node:test';
+test('rotated starting gold nodes still share one complete mine illustration',()=>{
+ for(const angle of [0,Math.PI/4,Math.PI/2,Math.PI*.75]){
+  const nodes=[0,1,2].map(i=>({id:`g3-${i}`,type:'gold',x:500+Math.cos(angle)*38*i,y:500+Math.sin(angle)*38*i,amount:8000}));
+  const mines=groupGoldNodes(nodes);
+  assert.equal(mines.length,1);assert.equal(mines[0].amount,24000);
+  assert.ok(Math.abs(mines[0].width-145)<.001);
+ }
+});
 import assert from 'node:assert/strict';
 import {activeResourceIds,createEnvironmentArt,ENVIRONMENT_ATLAS_URL,ENVIRONMENT_GRID,groupGoldNodes,mineState} from '../public/environment-art.js';
 import {spriteAtlases} from '../public/sprite-atlas.js';
