@@ -21,6 +21,7 @@ for(const skill of Object.values(ABILITIES))test(`${skill.id}: custo, preparo e 
  const initialMana=s.hero.mana;castAbility(s.r,s.p,s.hero,{ability:skill.id,target:target.id,x:target.x,y:target.y});
  near(s.hero.mana,initialMana-skill.mana);near(s.hero.cooldowns[skill.id],skill.cooldown);
  assert.equal(s.r.spellEvents.at(-1).phase,'cast');assert.ok(s.hero.preparation);
+ assert.doesNotThrow(()=>JSON.stringify(s.r.entities),'o estado enviado durante o preparo deve ser serializável');
  step(s.r,skill.cast);assert.equal(s.hero.preparation,null);assert.ok(s.r.spellEvents.some(e=>e.ability===skill.id&&['impact','zone','pulse'].includes(e.phase)));
 });
 test('R exige nível 5 sem cobrar uma ordem recusada',()=>{const s=setup();s.hero.heroLevel=4;const mana=s.hero.mana;assert.throws(()=>castAbility(s.r,s.p,s.hero,{ability:'fort_01_r',x:530,y:500}),/nível heroico 5/);assert.equal(s.hero.mana,mana);});

@@ -83,7 +83,7 @@ export function pathClear(r,a,b,ignore=new Set()){
   return segmentClear(a,b,(x,y)=>x<15||y<15||x>WORLD-15||y>WORLD-15||(r.mapId&&terrainBlocked(x,y,10,r.mapId))||buildings.some(e=>Math.hypot(x-e.x,y-e.y)<38));
 }
 export function lastFreePoint(r,from,to){
-  const len=distance(from,to);if(!len)return {...from};let last={x:from.x,y:from.y};
+  const len=distance(from,to);if(!len)return {x:from.x,y:from.y};let last={x:from.x,y:from.y};
   for(let d=Math.min(3,len);d<=len+EPS;d=Math.min(len,d+3)){
     const p={x:from.x+(to.x-from.x)*d/len,y:from.y+(to.y-from.y)*d/len};
     if(!pathClear(r,last,p))break;last=p;if(d===len)break;
